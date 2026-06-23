@@ -487,4 +487,165 @@ function toast(msg,type="") {
   clearTimeout(t._timer);t._timer=setTimeout(()=>t.classList.remove("show"),3000);
 }
 
+// ── Excel Import ──────────────────────────────────────────────
+let importQueue = [];
+
+function handleExcelImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = "";
+  const reader = new FileReader();
+  reader.onload = (e) => parseImportFile(e.target.result);
+  reader.readAsArrayBuffer(file);
+}
+
+function parseTime(str) {
+  if (!str) return null;
+  const s = str.toString().trim().toLowerCase().replace(" to ", " - ");
+  const parts = s.split(" - ");
+  if (parts.length !== 2) return null;
+  function fmt(t) {
+    t = t.trim();
+    const m = t.match(/^(\d+)(?::(\d+))?\s*(am|pm)$/);
+    if (!m) return null;
+    let hr = parseInt(m[1]), mn = parseInt(m[2] || 0), ap = m[3];
+    if (ap === "pm" && hr !== 12) hr += 12;
+    if (ap === "am" && hr === 12) hr = 0;
+    return `${String(hr).padStart(2,"0")}:${String(mn).padStart(2,"0")}`;
+  }
+  return [fmt(parts[0]), fmt(parts[1])];
+}
+
+function calcStdHours(start, end) {
+  if (!start || !end) return 8;
+  const [h1,m1] = start.split(":").map(Number);
+  const [h2,m2] = end.split(":").map(Number);
+  return +((h2*60+m2-h1*60-m1)/60).toFixed(1);
+}
+
+function parseImportFile(buffer) {
+  let wb;
+  try { wb = XLSX.read(buffer, { type:"array" }); }
+  catch(e) { toast("Could not read file: " + e.message, "error"); return; }
+
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval:"" });
+
+  const errors = [], parsed = [];
+  const seenNames = new Set(), seenIds = new Set();
+
+  rows.forEach((row, idx) => {
+    const rowNum = idx + 2;
+    const name   = (row["Employee Name"] || row["Name"] || "").toString().trim();
+    const area   = (row["Area"] || row["Work Area"] || "").toString().trim();
+    const status = (row["Employment Status"] || row["Status"] || "Permanent").toString().trim();
+    const monThu = (row["Monday to Thursday"] || row["Mon-Thu"] || row["Shift"] || "").toString().trim();
+    const friday = (row["Friday"] || monThu).toString().trim();
+
+    if (!name)   { errors.push(`Row ${rowNum}: Missing employee name`); return; }
+    if (!area)   { errors.push(`Row ${rowNum}: Missing area for "${name}"`); return; }
+    if (!monThu) { errors.push(`Row ${rowNum}: Missing shift time for "${name}"`); return; }
+
+    const nameKey = name.toLowerCase();
+    if (seenNames.has(nameKey)) { errors.push(`Row ${rowNum}: Duplicate in file — "${name}"`); return; }
+    seenNames.add(nameKey);
+
+    const monThuTimes = parseTime(monThu);
+    if (!monThuTimes || !monThuTimes[0] || !monThuTimes[1]) {
+      errors.push(`Row ${rowNum}: Cannot parse shift time "${monThu}" for "${name}"`); return;
+    }
+    const friTimes = parseTime(friday);
+
+    // Auto-generate employee ID
+    const parts = name.replace(/,/g,"").split(/\s+/);
+    let empId = (parts[parts.length-1].slice(0,3) + parts[0].slice(0,2)).toUpperCase();
+    const baseId = empId; let sfx = 1;
+    while (seenIds.has(empId)) empId = baseId + sfx++;
+    seenIds.add(empId);
+
+    const existing = employees.find(e => e.name.toLowerCase() === nameKey);
+    parsed.push({
+      key: existing ? existing.key : "e" + Date.now() + Math.random().toString(36).slice(2,6),
+      name, area, status,
+      empId: existing ? existing.empId : empId,
+      startTime: monThuTimes[0], endTime: monThuTimes[1],
+      friStart: friTimes ? friTimes[0] : monThuTimes[0],
+      friEnd:   friTimes ? friTimes[1] : monThuTimes[1],
+      hours: calcStdHours(monThuTimes[0], monThuTimes[1]),
+      pin: existing ? existing.pin : "0000",
+      isExisting: !!existing, isNew: !existing,
+    });
+  });
+
+  showImportModal(parsed, errors);
+}
+
+function showImportModal(parsed, errors) {
+  importQueue = parsed;
+  const newCount = parsed.filter(r=>r.isNew).length;
+  const overwriteCount = parsed.filter(r=>r.isExisting).length;
+  const hasErrors = errors.length > 0;
+
+  // Summary badges
+  let sumHtml = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:.5rem">`;
+  sumHtml += `<span class="badge badge-blue" style="font-size:13px">📋 ${parsed.length} employees found</span>`;
+  if (newCount)       sumHtml += `<span class="badge badge-green" style="font-size:13px">✚ ${newCount} new</span>`;
+  if (overwriteCount) sumHtml += `<span class="badge badge-amber" style="font-size:13px">⚠ ${overwriteCount} will overwrite</span>`;
+  if (errors.length)  sumHtml += `<span class="badge badge-red" style="font-size:13px">✗ ${errors.length} error${errors.length>1?"s":""}</span>`;
+  sumHtml += `</div>`;
+  document.getElementById("import-summary").innerHTML = sumHtml;
+
+  // Errors block
+  document.getElementById("import-errors").innerHTML = hasErrors ? `
+    <div style="background:#fce8e8;border:1px solid #f5c1c1;border-radius:var(--radius);padding:1rem;margin-bottom:.75rem">
+      <div style="font-weight:700;color:#a32d2d;margin-bottom:.5rem">⛔ Errors found — fix these in your Excel file and re-upload:</div>
+      ${errors.map(e=>`<div style="font-size:13px;color:#a32d2d;padding:2px 0">• ${e}</div>`).join("")}
+    </div>` : "";
+
+  // Preview table
+  document.getElementById("import-table-wrap").innerHTML = parsed.length ? `
+    <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:.5rem">Import preview</div>
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>Status</th><th>Name</th><th>Area</th><th>Employment</th><th>Mon–Thu</th><th>Friday</th><th>Hrs</th><th>PIN</th></tr></thead>
+      <tbody>${parsed.map(r=>`<tr style="${r.isExisting?"background:#fff8e1":""}">
+        <td>${r.isExisting
+          ? '<span class="badge badge-amber" style="font-size:11px">⚠ Overwrite</span>'
+          : '<span class="badge badge-green" style="font-size:11px">✚ New</span>'}</td>
+        <td style="font-weight:600;white-space:nowrap">${r.name}</td>
+        <td><span class="tag">${r.area}</span></td>
+        <td style="font-size:12px;color:var(--text2)">${r.status}</td>
+        <td style="font-size:12px;white-space:nowrap">${r.startTime}–${r.endTime}</td>
+        <td style="font-size:12px;white-space:nowrap">${r.friStart}–${r.friEnd}</td>
+        <td style="font-size:12px">${r.hours}h</td>
+        <td style="font-size:12px;color:var(--text3)">${r.isExisting?"unchanged":"0000"}</td>
+      </tr>`).join("")}</tbody>
+    </table></div>
+    ${overwriteCount ? `<div style="font-size:12px;color:#7a5500;margin-top:.5rem;padding:.6rem .75rem;background:#fff8e1;border-radius:var(--radius-sm)">⚠ <strong>${overwriteCount} existing employee${overwriteCount>1?"s":""}</strong> will be overwritten. Their PINs and attendance history will be preserved.</div>` : ""}
+    <div style="font-size:12px;color:var(--text2);margin-top:.5rem">💡 New employees get default PIN <strong>0000</strong> — update each PIN in Admin after import.</div>` : "";
+
+  document.getElementById("import-confirm-btn").style.display = (!hasErrors && parsed.length) ? "" : "none";
+  document.getElementById("import-modal").classList.add("open");
+}
+
+function confirmImport() {
+  let added = 0, updated = 0;
+  importQueue.forEach(r => {
+    const idx = employees.findIndex(e => e.key === r.key);
+    const emp = { key:r.key, name:r.name, empId:r.empId, area:r.area, startTime:r.startTime, endTime:r.endTime, hours:r.hours, pin:r.pin };
+    if (idx >= 0) { employees[idx] = emp; updated++; }
+    else          { employees.push(emp); added++; }
+  });
+  saveLocal();
+  closeImportModal();
+  renderEmpList();
+  renderEmpGrid();
+  toast(`✓ Imported: ${added} new, ${updated} updated`, "success");
+  importQueue = [];
+}
+
+function closeImportModal() {
+  document.getElementById("import-modal").classList.remove("open");
+  importQueue = [];
+}
+
 init();

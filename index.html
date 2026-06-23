@@ -281,8 +281,12 @@ footer{text-align:center;padding:1.5rem;font-size:11px;color:var(--text3);border
         <div>
           <div class="section-head">
             <div class="section-title">Employees</div>
-            <button class="btn btn-primary" onclick="openEmpModal()">+ Add Employee</button>
+            <div style="display:flex;gap:8px">
+              <button class="btn" onclick="document.getElementById('xlsx-upload').click()">⬆ Import Excel</button>
+              <button class="btn btn-primary" onclick="openEmpModal()">+ Add Employee</button>
+            </div>
           </div>
+          <input type="file" id="xlsx-upload" accept=".xlsx,.xls" style="display:none" onchange="handleExcelImport(event)"/>
           <div id="emp-list"></div>
         </div>
         <div>
@@ -340,6 +344,20 @@ footer{text-align:center;padding:1.5rem;font-size:11px;color:var(--text3);border
     <div class="actions">
       <button class="btn" onclick="closeEmpModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEmployee()">✓ Save Employee</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import preview modal -->
+<div class="modal-overlay" id="import-modal" style="align-items:flex-start;padding:1.5rem;overflow-y:auto">
+  <div class="modal" style="width:680px;max-width:100%;margin:auto">
+    <div class="modal-title">Import Employees from Excel</div>
+    <div id="import-summary" style="margin-bottom:1rem"></div>
+    <div id="import-errors" style="margin-bottom:1rem"></div>
+    <div id="import-table-wrap" style="overflow-x:auto;margin-bottom:1rem"></div>
+    <div class="actions">
+      <button class="btn" onclick="closeImportModal()">Cancel</button>
+      <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()" style="display:none">✓ Confirm Import</button>
     </div>
   </div>
 </div>
