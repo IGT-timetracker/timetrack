@@ -60,22 +60,24 @@ const AVATAR_COLORS = [["#e6eef9","#0047BB"],["#e6f4ed","#1a7a4a"],["#fff0e8","#
 function initials(n) { return (n||"?").split(" ").map(x=>x[0]).join("").toUpperCase().slice(0,2); }
 function avatarStyle(i) { const c=AVATAR_COLORS[i%AVATAR_COLORS.length]; return `background:${c[0]};color:${c[1]}`; }
 
-function renderEmpGrid(filter = "") {
+function renderEmpGrid(filter) {
   const g = document.getElementById("emp-grid");
   if (!g) return;
+  // Show nothing until user starts typing
+  if (filter === undefined || filter === "") {
+    g.innerHTML = "";
+    return;
+  }
   const q = filter.toLowerCase().trim();
+  if (!q) { g.innerHTML = ""; return; }
   const filtered = employees.filter(e =>
-    !q || e.name.toLowerCase().includes(q) || e.empId.toLowerCase().includes(q) || e.area.toLowerCase().includes(q)
+    e.name.toLowerCase().includes(q) || e.empId.toLowerCase().includes(q) || e.area.toLowerCase().includes(q)
   );
-  if (!employees.length) {
-    g.innerHTML = '<div class="emp-empty">No employees yet.<br>Use Admin access to add employees.</div>';
-    return;
-  }
   if (!filtered.length) {
-    g.innerHTML = '<div class="emp-empty">No employees match your search.</div>';
+    g.innerHTML = '<div class="emp-list-wrap"><div class="emp-empty">No employees match your search.</div></div>';
     return;
   }
-  g.innerHTML = filtered.map((e) => {
+  const rows = filtered.map(e => {
     const i = employees.indexOf(e);
     const active = getClockedInEntry(e.key);
     const done = clockEntries.find(en => en.empKey === e.key && en.date === today() && en.timeOut);
@@ -93,6 +95,7 @@ function renderEmpGrid(filter = "") {
       <div class="emp-item-status">${statusBadge}</div>
     </div>`;
   }).join("");
+  g.innerHTML = `<div class="emp-list-wrap">${rows}</div>`;
 }
 
 function highlight(text, q) {
@@ -291,7 +294,7 @@ function performClockAction(empKey) {
     </div>`;
     toast(`${emp.name} clocked out at ${timeStamp}`,"success");
   } else {
-    clockEntries.push({ empKey, date:today(), timeIn:timeStamp, timeOut:null, name:emp.name, area:emp.area, empId:emp.empId, stdStart:emp.startTime, stdEnd:emp.endTime, stdHours:emp.hours });
+    clockEntries.push({ empKey, date:today(), timeIn:timeStamp, timeOut:null, name:emp.name, area:emp.area, empId:emp.empId, stdStart:emp.startTime, stdEnd:emp.endTime, stdHours:emp.hours, lunchMins:emp.lunchMins||settings.defaultLunch||30, status:emp.status||"Permanent" });
     saveLocal();
     const h = new Date().getHours();
     const greet = h<12?"morning":h<17?"afternoon":"evening";
@@ -310,7 +313,7 @@ function performClockAction(empKey) {
 function forceClockIn(empKey) {
   const emp=employees.find(e=>e.key===empKey);
   const t=new Date().toLocaleTimeString("en-AU",{hour:"2-digit",minute:"2-digit",hour12:false});
-  clockEntries.push({empKey,date:today(),timeIn:t,timeOut:null,name:emp.name,area:emp.area,empId:emp.empId,stdStart:emp.startTime,stdEnd:emp.endTime,stdHours:emp.hours});
+  clockEntries.push({empKey,date:today(),timeIn:t,timeOut:null,name:emp.name,area:emp.area,empId:emp.empId,stdStart:emp.startTime,stdEnd:emp.endTime,stdHours:emp.hours,lunchMins:emp.lunchMins||settings.defaultLunch||30,status:emp.status||"Permanent"});
   saveLocal(); performClockAction(empKey);
 }
 
@@ -327,16 +330,19 @@ function renderTodayTable() {
   const entries=clockEntries.filter(e=>e.date===today());
   const wrap=document.getElementById("today-table-wrap"); if(!wrap) return;
   if(!entries.length){wrap.innerHTML='<div class="empty">⏰<br><br>No clock-ins recorded today</div>';return;}
-  wrap.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Employee</th><th>Area</th><th>Clock in</th><th>Clock out</th><th>Hours</th><th>Status</th></tr></thead><tbody>${entries.map(e=>{
-    const hrs=calcHours(e.timeIn,e.timeOut);
-    return `<tr><td><div class="emp-row"><div class="emp-avatar" style="${avatarStyle(employees.findIndex(x=>x.key===e.empKey))};width:30px;height:30px;font-size:11px">${initials(e.name)}</div><div><div style="font-weight:600">${e.name}</div><div style="font-size:11px;color:var(--text2)">${e.empId}</div></div></div></td><td><span class="tag">${e.area}</span></td><td><strong>${e.timeIn||"—"}</strong></td><td><strong>${e.timeOut||"—"}</strong></td><td>${hrs!==null?hrs.toFixed(1)+"h":"—"}</td><td>${e.timeOut?'<span class="badge badge-green">✓ Done</span>':'<span class="badge badge-amber">● Active</span>'}</td></tr>`;
+  wrap.innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Employee</th><th>Area</th><th>Clock in</th><th>Clock out</th><th>Break</th><th>Net hours</th><th>Status</th></tr></thead><tbody>${entries.map(e=>{
+    const hrs=calcHours(e.timeIn,e.timeOut,e.lunchMins);
+    return `<tr><td><div class="emp-row"><div class="emp-avatar" style="${avatarStyle(employees.findIndex(x=>x.key===e.empKey))};width:30px;height:30px;font-size:11px">${initials(e.name)}</div><div><div style="font-weight:600">${e.name}</div><div style="font-size:11px;color:var(--text2)">${e.empId}</div></div></div></td><td><span class="tag">${e.area}</span></td><td><strong>${e.timeIn||"—"}</strong></td><td><strong>${e.timeOut||"—"}</strong></td><td style="font-size:12px;color:var(--text2)">${e.lunchMins||0}m</td><td>${hrs!==null?hrs.toFixed(1)+"h":"—"}</td><td>${e.timeOut?'<span class="badge badge-green">✓ Done</span>':'<span class="badge badge-amber">● Active</span>'}</td></tr>`;
   }).join("")}</tbody></table></div>`;
 }
 
-function calcHours(tin,tout) {
-  if(!tin||!tout) return null;
-  const [h1,m1]=tin.split(":").map(Number),[h2,m2]=tout.split(":").map(Number);
-  return ((h2*60+m2)-(h1*60+m1))/60;
+function calcHours(tin, tout, lunchMins) {
+  if (!tin || !tout) return null;
+  const [h1,m1] = tin.split(":").map(Number);
+  const [h2,m2] = tout.split(":").map(Number);
+  const raw = (h2*60+m2 - h1*60-m1) / 60;
+  const lb = (lunchMins !== undefined ? lunchMins : (settings.defaultLunch || 30)) / 60;
+  return Math.max(0, raw - lb);
 }
 
 function timeDiffStr(t1,t2) {
@@ -347,8 +353,13 @@ function timeDiffStr(t1,t2) {
 }
 
 function renderReportRecipient() {
-  const el=document.getElementById("report-recipient-info"); if(!el) return;
-  el.innerHTML=`📧 Report recipient: <strong>${settings.recipientName||"—"}</strong> &lt;${settings.recipientEmail||"—"}&gt;`;
+  const el = document.getElementById("report-recipient-info");
+  if (!el) return;
+  const schedules = getSchedules();
+  const active = schedules.filter(s => s.active).length;
+  el.innerHTML = active
+    ? `📧 <strong>${active} active report schedule${active>1?"s":""}</strong> — go to Admin → Scheduled Reports to manage`
+    : `📧 No active report schedules — go to Admin → Scheduled Reports to set up`;
 }
 
 function genReport() {
@@ -357,7 +368,7 @@ function genReport() {
   const wrap=document.getElementById("report-content"); if(!wrap) return;
   if(!entries.length){wrap.innerHTML=`<div class="card"><div class="empty">📅<br><br>No records for ${dateVal}</div></div>`;return;}
   const rows=entries.map(e=>{
-    const actual=calcHours(e.timeIn,e.timeOut),diff=actual!==null?actual-e.stdHours:null;
+    const actual=calcHours(e.timeIn,e.timeOut,e.lunchMins),diff=actual!==null?actual-e.stdHours:null;
     const inVar=timeDiffStr(e.stdStart,e.timeIn),outVar=e.timeOut?timeDiffStr(e.stdEnd,e.timeOut):null;
     const status=e.timeOut?(diff!==null&&diff>=0?"On time":"Short"):e.timeIn?"In progress":"Absent";
     return {...e,actual,diff,inVar,outVar,status};
@@ -392,7 +403,7 @@ function exportExcel() {
     [],
     ["Employee","Employee ID","Work Area","Std Start","Actual Clock In","Start Variance","Std End","Actual Clock Out","End Variance","Std Hours","Actual Hours","Difference","Status"],
     ...entries.map(e=>{
-      const actual=calcHours(e.timeIn,e.timeOut),diff=actual!==null?+(actual-e.stdHours).toFixed(2):null;
+      const actual=calcHours(e.timeIn,e.timeOut,e.lunchMins),diff=actual!==null?+(actual-e.stdHours).toFixed(2):null;
       const inVar=timeDiffStr(e.stdStart,e.timeIn),outVar=e.timeOut?timeDiffStr(e.stdEnd,e.timeOut):null;
       const status=e.timeOut?(diff!==null&&diff>=0?"On time":"Short hours"):e.timeIn?"In progress":"Absent";
       return [e.name,e.empId,e.area,e.stdStart,e.timeIn||"",inVar||"",e.stdEnd,e.timeOut||"",outVar||"",e.stdHours,actual!==null?+actual.toFixed(2):"",diff!==null?diff:"",status];
@@ -405,7 +416,7 @@ function exportExcel() {
   ws["!cols"]=[{wch:22},{wch:12},{wch:16},{wch:11},{wch:16},{wch:14},{wch:11},{wch:16},{wch:14},{wch:11},{wch:13},{wch:11},{wch:14}];
   ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:12}}];
   XLSX.utils.book_append_sheet(wb,ws,"Daily Timesheet");
-  const allData=[["Employee","Employee ID","Area","Date","Time In","Time Out","Std Hours","Actual Hours","Difference"],...clockEntries.map(e=>{const a=calcHours(e.timeIn,e.timeOut);return[e.name,e.empId,e.area,e.date,e.timeIn||"",e.timeOut||"",e.stdHours,a!==null?+a.toFixed(2):"",a!==null?+(a-e.stdHours).toFixed(2):""];})];
+  const allData=[["Employee","Employee ID","Area","Status","Date","Time In","Time Out","Lunch Break","Std Hours","Net Hours","Difference"],...clockEntries.map(e=>{const a=calcHours(e.timeIn,e.timeOut,e.lunchMins);return[e.name,e.empId,e.area,e.status||"",e.date,e.timeIn||"",e.timeOut||"",`${e.lunchMins||0}m`,e.stdHours,a!==null?+a.toFixed(2):"",a!==null?+(a-e.stdHours).toFixed(2):""];})];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(allData),"Full History");
   XLSX.writeFile(wb,`IGT_Timesheet_${dateVal}.xlsx`);
   toast("Excel report downloaded!");
@@ -429,8 +440,8 @@ function openEmpModal(key) {
   editingEmpKey=key||null;
   const areas=(settings.areas||"Production,Warehouse,Office").split(",").map(a=>a.trim());
   document.getElementById("emp-area").innerHTML=areas.map(a=>`<option>${a}</option>`).join("");
-  if(key){const e=employees.find(x=>x.key===key);document.getElementById("modal-title").textContent="Edit Employee";document.getElementById("emp-name").value=e.name;document.getElementById("emp-id-field").value=e.empId;document.getElementById("emp-area").value=e.area;document.getElementById("emp-start").value=e.startTime;document.getElementById("emp-end").value=e.endTime;document.getElementById("emp-hours").value=e.hours;document.getElementById("emp-pin").value=e.pin||"";}
-  else{document.getElementById("modal-title").textContent="Add Employee";["emp-name","emp-id-field","emp-pin"].forEach(id=>document.getElementById(id).value="");document.getElementById("emp-start").value="09:00";document.getElementById("emp-end").value="17:00";document.getElementById("emp-hours").value="8";}
+  if(key){const e=employees.find(x=>x.key===key);document.getElementById("modal-title").textContent="Edit Employee";document.getElementById("emp-name").value=e.name;document.getElementById("emp-id-field").value=e.empId;document.getElementById("emp-area").value=e.area;document.getElementById("emp-start").value=e.startTime;document.getElementById("emp-end").value=e.endTime;document.getElementById("emp-hours").value=e.hours;document.getElementById("emp-pin").value=e.pin||"";document.getElementById("emp-lunch").value=e.lunchMins||30;}
+  else{document.getElementById("modal-title").textContent="Add Employee";["emp-name","emp-id-field","emp-pin"].forEach(id=>document.getElementById(id).value="");document.getElementById("emp-start").value="09:00";document.getElementById("emp-end").value="17:00";document.getElementById("emp-hours").value="8";document.getElementById("emp-lunch").value=settings.defaultLunch||30;}
   document.getElementById("emp-modal").classList.add("open");
 }
 
@@ -441,10 +452,12 @@ function saveEmployee() {
   const area=document.getElementById("emp-area").value,startTime=document.getElementById("emp-start").value;
   const endTime=document.getElementById("emp-end").value,hours=parseFloat(document.getElementById("emp-hours").value);
   const pin=document.getElementById("emp-pin").value.trim();
+  const lunchMins=parseInt(document.getElementById("emp-lunch").value)||0;
+  const status=document.getElementById("emp-status-field")?.value||"Permanent";
   if(!name||!empId){toast("Name and ID required","error");return;}
   if(!/^\d{4}$/.test(pin)){toast("PIN must be exactly 4 digits","error");return;}
-  if(editingEmpKey){const idx=employees.findIndex(e=>e.key===editingEmpKey);employees[idx]={...employees[idx],name,empId,area,startTime,endTime,hours,pin};}
-  else employees.push({key:"e"+Date.now(),name,empId,area,startTime,endTime,hours,pin});
+  if(editingEmpKey){const idx=employees.findIndex(e=>e.key===editingEmpKey);employees[idx]={...employees[idx],name,empId,area,startTime,endTime,hours,pin,lunchMins,status};}
+  else employees.push({key:"e"+Date.now(),name,empId,area,startTime,endTime,hours,pin,lunchMins,status});
   saveLocal();closeEmpModal();renderEmpList();renderEmpGrid();
   toast(editingEmpKey?"Employee updated":"Employee added","success");
 }
@@ -461,15 +474,21 @@ function loadSettingsForm() {
   document.getElementById("cfg-path").value=settings.filePath||"General/ATTENDANCE/Attendance.xlsx";
   document.getElementById("cfg-areas").value=settings.areas||"";
   document.getElementById("cfg-company").value=settings.company||"";
-  document.getElementById("cfg-recipient-name").value=settings.recipientName||"";
-  document.getElementById("cfg-recipient-email").value=settings.recipientEmail||"";
+  document.getElementById("cfg-lunch").value=settings.defaultLunch||30;
+  renderSchedulesList();
 }
 
 function saveSettings() {
   const adminPin=document.getElementById("cfg-admin-pin").value.trim();
   if(!/^\d{4}$/.test(adminPin)){toast("Admin PIN must be 4 digits","error");return;}
-  settings={...settings,adminPin,siteName:document.getElementById("cfg-site").value.trim(),filePath:document.getElementById("cfg-path").value.trim(),areas:document.getElementById("cfg-areas").value,company:document.getElementById("cfg-company").value.trim(),recipientName:document.getElementById("cfg-recipient-name").value.trim(),recipientEmail:document.getElementById("cfg-recipient-email").value.trim()};
-  saveLocal();toast("Settings saved","success");renderReportRecipient();
+  settings={...settings,adminPin,
+    siteName:document.getElementById("cfg-site").value.trim(),
+    filePath:document.getElementById("cfg-path").value.trim(),
+    areas:document.getElementById("cfg-areas").value,
+    company:document.getElementById("cfg-company").value.trim(),
+    defaultLunch:parseInt(document.getElementById("cfg-lunch").value)||30,
+  };
+  saveLocal();toast("Settings saved","success");
 }
 
 function showSection(id,btn) {
@@ -647,5 +666,159 @@ function closeImportModal() {
   document.getElementById("import-modal").classList.remove("open");
   importQueue = [];
 }
+
+// ── Scheduled Reports ─────────────────────────────────────────
+let editingScheduleKey = null;
+
+function getSchedules() {
+  return JSON.parse(localStorage.getItem("tt_schedules") || "[]");
+}
+function saveSchedules(arr) {
+  localStorage.setItem("tt_schedules", JSON.stringify(arr));
+}
+
+const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const DAY_IDS   = ["sun","mon","tue","wed","thu","fri","sat"];
+
+function renderSchedulesList() {
+  const el = document.getElementById("report-schedules-list");
+  if (!el) return;
+  const schedules = getSchedules();
+  if (!schedules.length) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--text2);padding:.5rem 0;margin-bottom:.5rem">No schedules yet. Add one below.</div>';
+    return;
+  }
+  el.innerHTML = schedules.map((s,i) => {
+    const days = DAY_IDS.map((d,idx) => s.days.includes(d) ? `<span style="font-weight:600">${DAY_NAMES[idx]}</span>` : `<span style="color:var(--text3)">${DAY_NAMES[idx]}</span>`).join(" ");
+    const areas = s.areas?.length ? s.areas.join(", ") : "All areas";
+    const empType = s.empType === "permanent" ? "Permanent only" : s.empType === "contractor" ? "Contractors only" : "All staff";
+    return `<div class="card" style="margin-bottom:8px;padding:.9rem 1rem">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:14px">${s.name} <span style="font-weight:400;color:var(--text2);font-size:12px">&lt;${s.email}&gt;</span>
+            ${s.active ? '<span class="badge badge-green" style="font-size:11px;margin-left:6px">● Active</span>' : '<span class="badge badge-gray" style="font-size:11px;margin-left:6px">Paused</span>'}
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-top:3px">⏰ ${s.time} · ${days}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">📂 ${areas} · 👤 ${empType}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn" onclick="openScheduleModal(${i})" style="padding:5px 9px">✏</button>
+          <button class="btn btn-danger" onclick="deleteSchedule(${i})" style="padding:5px 9px">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function openScheduleModal(idx) {
+  editingScheduleKey = (idx !== undefined) ? idx : null;
+  const areas = (settings.areas || "").split(",").map(a => a.trim()).filter(Boolean);
+  const s = (idx !== undefined) ? getSchedules()[idx] : null;
+
+  // Populate area checkboxes
+  document.getElementById("sch-areas-wrap").innerHTML = areas.length
+    ? areas.map(a => `<label style="text-transform:none;font-size:13px;display:flex;align-items:center;gap:4px;font-weight:400"><input type="checkbox" class="sch-area-cb" value="${a}" ${s?.areas?.includes(a)?"checked":""}> ${a}</label>`).join("")
+    : '<div style="font-size:12px;color:var(--text2)">Save work areas in settings first</div>';
+
+  document.getElementById("sch-name").value  = s?.name  || "";
+  document.getElementById("sch-email").value = s?.email || "";
+  document.getElementById("sch-time").value  = s?.time  || "17:30";
+  document.getElementById("sch-emptype").value = s?.empType || "all";
+  document.getElementById("sch-active").value  = s?.active !== false ? "1" : "0";
+  DAY_IDS.forEach(d => { document.getElementById("sch-"+d).checked = s ? s.days.includes(d) : ["mon","tue","wed","thu","fri"].includes(d); });
+  document.getElementById("schedule-modal-title").textContent = s ? "Edit Report Schedule" : "Add Report Schedule";
+  document.getElementById("schedule-modal").classList.add("open");
+}
+
+function closeScheduleModal() {
+  document.getElementById("schedule-modal").classList.remove("open");
+  editingScheduleKey = null;
+}
+
+function saveSchedule() {
+  const name  = document.getElementById("sch-name").value.trim();
+  const email = document.getElementById("sch-email").value.trim();
+  const time  = document.getElementById("sch-time").value;
+  if (!name)  { toast("Recipient name required","error"); return; }
+  if (!email) { toast("Recipient email required","error"); return; }
+  const days = DAY_IDS.filter(d => document.getElementById("sch-"+d).checked);
+  if (!days.length) { toast("Select at least one day","error"); return; }
+  const areas = [...document.querySelectorAll(".sch-area-cb:checked")].map(cb => cb.value);
+  const empType = document.getElementById("sch-emptype").value;
+  const active  = document.getElementById("sch-active").value === "1";
+
+  const schedules = getSchedules();
+  const entry = { key: "s"+Date.now(), name, email, time, days, areas, empType, active };
+  if (editingScheduleKey !== null) schedules[editingScheduleKey] = { ...schedules[editingScheduleKey], ...entry };
+  else schedules.push(entry);
+  saveSchedules(schedules);
+  closeScheduleModal();
+  renderSchedulesList();
+  toast(editingScheduleKey !== null ? "Schedule updated" : "Schedule added", "success");
+}
+
+function deleteSchedule(idx) {
+  if (!confirm("Remove this report schedule?")) return;
+  const schedules = getSchedules();
+  schedules.splice(idx, 1);
+  saveSchedules(schedules);
+  renderSchedulesList();
+  toast("Schedule removed");
+}
+
+// Check schedules every minute and auto-export if time matches
+function checkSchedules() {
+  const now = new Date();
+  const dayKey = DAY_IDS[now.getDay()];
+  const timeStr = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+  getSchedules().forEach(s => {
+    if (!s.active) return;
+    if (!s.days.includes(dayKey)) return;
+    if (s.time !== timeStr) return;
+    runScheduledExport(s);
+  });
+}
+
+function runScheduledExport(s) {
+  const dateVal = today();
+  let entries = clockEntries.filter(e => e.date === dateVal);
+  // Filter by area
+  if (s.areas && s.areas.length) entries = entries.filter(e => s.areas.includes(e.area));
+  // Filter by employment type
+  if (s.empType === "permanent")  entries = entries.filter(e => (e.status||"").toLowerCase() !== "contractor");
+  if (s.empType === "contractor") entries = entries.filter(e => (e.status||"").toLowerCase() === "contractor");
+
+  if (!entries.length) return;
+
+  const areaLabel = s.areas?.length ? s.areas.join("+") : "AllAreas";
+  const typeLabel = s.empType === "all" ? "" : "_" + s.empType;
+  const filename  = `IGT_Timesheet_${dateVal}_${areaLabel}${typeLabel}_for_${s.name.replace(/\s+/g,"_")}.xlsx`;
+
+  const wsData = [
+    [`${settings.company||"IGT"} — Daily Timesheet Report`,"","","","","","","","","","","",""],
+    [`Date: ${dateVal}`,"","Report for:",`${s.name} <${s.email}>`,"","Areas:",s.areas?.length?s.areas.join(", "):"All","Staff:",s.empType==="permanent"?"Permanent only":s.empType==="contractor"?"Contractors only":"All","","",""],
+    [],
+    ["Employee","Employee ID","Area","Status","Std Start","Actual In","Start Var","Std End","Actual Out","End Var","Std Hrs","Net Hrs","Diff","Result"],
+    ...entries.map(e => {
+      const actual = calcHours(e.timeIn, e.timeOut, e.lunchMins);
+      const diff   = actual !== null ? +(actual - e.stdHours).toFixed(2) : null;
+      const inVar  = timeDiffStr(e.stdStart, e.timeIn);
+      const outVar = e.timeOut ? timeDiffStr(e.stdEnd, e.timeOut) : null;
+      const result = e.timeOut ? (diff!==null&&diff>=0?"On time":"Short") : e.timeIn?"In progress":"Absent";
+      return [e.name,e.empId,e.area,e.status||"",e.stdStart,e.timeIn||"",inVar||"",e.stdEnd,e.timeOut||"",outVar||"",e.stdHours,actual!==null?+actual.toFixed(2):"",diff!==null?diff:"",result];
+    }),
+    [],
+    ["","","","","","","","","","",`=SUM(K5:K${entries.length+4})`,`=SUM(L5:L${entries.length+4})`,`=SUM(M5:M${entries.length+4})`,""],
+    ["","","","","","","","","","","Total Std","Total Net","Total Diff",""],
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws["!cols"] = [{wch:22},{wch:12},{wch:16},{wch:12},{wch:11},{wch:11},{wch:11},{wch:11},{wch:11},{wch:11},{wch:10},{wch:10},{wch:10},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws, "Timesheet");
+  XLSX.writeFile(wb, filename);
+  toast(`📧 Auto-report sent to ${s.name}`, "success");
+}
+
+setInterval(checkSchedules, 60000);
 
 init();
