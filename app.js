@@ -703,6 +703,7 @@ function renderSchedulesList() {
           <div style="font-size:12px;color:var(--text2);margin-top:2px">📂 ${areas} · 👤 ${empType}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-success" onclick="testSendNow(${i})" style="padding:5px 9px;font-size:12px">▶ Send now</button>
           <button class="btn" onclick="openScheduleModal(${i})" style="padding:5px 9px">✏</button>
           <button class="btn btn-danger" onclick="deleteSchedule(${i})" style="padding:5px 9px">🗑</button>
         </div>
@@ -782,34 +783,37 @@ function checkSchedules() {
   });
 }
 
-function runScheduledExport(s) {
+// ── Power Automate Webhook ────────────────────────────────────
+const POWER_AUTOMATE_URL = "https://default3c259ff8b3a9490ca23979b422db62.eb.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/1f48e40d38724395b4aa9ed093b3af68/triggers/manual/paths/invoke?api-version=1";
+
+async function runScheduledExport(s) {
   const dateVal = today();
   let entries = clockEntries.filter(e => e.date === dateVal);
-  // Filter by area
   if (s.areas && s.areas.length) entries = entries.filter(e => s.areas.includes(e.area));
-  // Filter by employment type
   if (s.empType === "permanent")  entries = entries.filter(e => (e.status||"").toLowerCase() !== "contractor");
   if (s.empType === "contractor") entries = entries.filter(e => (e.status||"").toLowerCase() === "contractor");
 
-  if (!entries.length) return;
+  if (!entries.length) {
+    toast(`No data to send for ${s.name}`, "");
+    return;
+  }
 
   const reportTitle = s.subject || `${settings.company||"IGT"} Daily Timesheet Report`;
-  const areaLabel = s.areas?.length ? s.areas.join("+") : "AllAreas";
-  const typeLabel = s.empType === "all" ? "" : "_" + s.empType;
-  const safeName  = (s.subject || s.name).replace(/[^a-zA-Z0-9 _-]/g,"").replace(/\s+/g,"_");
-  const filename  = `${safeName}_${dateVal}.xlsx`;
+  const safeName    = (s.subject || s.name).replace(/[^a-zA-Z0-9 _-]/g,"").replace(/\s+/g,"_");
+  const filename    = `${safeName}_${dateVal}.xlsx`;
 
+  // Build Excel workbook
   const wsData = [
-    [reportTitle, "", "", "", "", "", "", "", "", "", "", "", ""],
+    [reportTitle,"","","","","","","","","","","",""],
     [`Date: ${dateVal}`,"","Report for:",`${s.name} <${s.email}>`,"","Areas:",s.areas?.length?s.areas.join(", "):"All","Staff:",s.empType==="permanent"?"Permanent only":s.empType==="contractor"?"Contractors only":"All","","",""],
     [],
     ["Employee","Employee ID","Area","Status","Std Start","Actual In","Start Var","Std End","Actual Out","End Var","Std Hrs","Net Hrs","Diff","Result"],
     ...entries.map(e => {
-      const actual = calcHours(e.timeIn, e.timeOut, e.lunchMins);
-      const diff   = actual !== null ? +(actual - e.stdHours).toFixed(2) : null;
-      const inVar  = timeDiffStr(e.stdStart, e.timeIn);
-      const outVar = e.timeOut ? timeDiffStr(e.stdEnd, e.timeOut) : null;
-      const result = e.timeOut ? (diff!==null&&diff>=0?"On time":"Short") : e.timeIn?"In progress":"Absent";
+      const actual = calcHours(e.timeIn,e.timeOut,e.lunchMins);
+      const diff   = actual!==null?+(actual-e.stdHours).toFixed(2):null;
+      const inVar  = timeDiffStr(e.stdStart,e.timeIn);
+      const outVar = e.timeOut?timeDiffStr(e.stdEnd,e.timeOut):null;
+      const result = e.timeOut?(diff!==null&&diff>=0?"On time":"Short"):e.timeIn?"In progress":"Absent";
       return [e.name,e.empId,e.area,e.status||"",e.stdStart,e.timeIn||"",inVar||"",e.stdEnd,e.timeOut||"",outVar||"",e.stdHours,actual!==null?+actual.toFixed(2):"",diff!==null?diff:"",result];
     }),
     [],
@@ -820,8 +824,52 @@ function runScheduledExport(s) {
   const ws = XLSX.utils.aoa_to_sheet(wsData);
   ws["!cols"] = [{wch:22},{wch:12},{wch:16},{wch:12},{wch:11},{wch:11},{wch:11},{wch:11},{wch:11},{wch:11},{wch:10},{wch:10},{wch:10},{wch:12}];
   XLSX.utils.book_append_sheet(wb, ws, "Timesheet");
-  XLSX.writeFile(wb, filename);
-  toast(`📧 Auto-report sent to ${s.name}`, "success");
+
+  // Convert workbook to base64
+  const wbOut    = XLSX.write(wb, { bookType:"xlsx", type:"base64" });
+  const areasTxt = s.areas?.length ? s.areas.join(", ") : "All areas";
+  const staffTxt = s.empType==="permanent"?"Permanent only":s.empType==="contractor"?"Contractors only":"All staff";
+
+  // Show sending indicator
+  toast(`📤 Sending report to ${s.name}…`);
+
+  try {
+    const resp = await fetch(POWER_AUTOMATE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        subject:        s.subject || reportTitle,
+        recipientName:  s.name,
+        recipientEmail: s.email,
+        date:           dateVal,
+        fileBase64:     wbOut,
+        fileName:       filename,
+        areas:          areasTxt,
+        staffType:      staffTxt,
+      }),
+    });
+
+    if (resp.ok || resp.status === 202) {
+      toast(`✅ Report emailed to ${s.name}`, "success");
+    } else {
+      const errText = await resp.text();
+      console.error("Power Automate error:", resp.status, errText);
+      toast(`⚠ Email failed for ${s.name} (${resp.status}) — downloading instead`, "error");
+      XLSX.writeFile(wb, filename); // fallback download
+    }
+  } catch(err) {
+    console.error("Fetch error:", err);
+    toast(`⚠ Could not reach email server — downloading instead`, "error");
+    XLSX.writeFile(wb, filename); // fallback download
+  }
+}
+
+function testSendNow(idx) {
+  const s = getSchedules()[idx];
+  if (!s) return;
+  if (confirm(`Send report now to ${s.name} <${s.email}>?`)) {
+    runScheduledExport(s);
+  }
 }
 
 setInterval(checkSchedules, 60000);
