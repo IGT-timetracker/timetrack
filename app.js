@@ -32,7 +32,7 @@ function loadLocal() {
       { key:"e2", name:"Jordan Smith", empId:"EMP002", area:"Warehouse",  startTime:"08:00", endTime:"16:00", hours:8, pin:"2345" },
       { key:"e3", name:"Sam Patel",    empId:"EMP003", area:"Office",     startTime:"07:00", endTime:"15:00", hours:8, pin:"3456" },
     ];
-    settings = { adminPin:"0000", areas:"Production,Warehouse,Office,Maintenance", company:"IGT APAC Manufacturing", recipientName:"Operations Manager", recipientEmail:"manager@igt.com", siteName:"APACManufacturingOperationsTeam", filePath:"General/ATTENDANCE/Attendance.xlsx" };
+    settings = { adminPin:"0000", areas:"Gaming Assembly,Fintech Assembly,Repair Centre,Warehouse,Operations Support", company:"IGT APAC Manufacturing", recipientName:"Operations Manager", recipientEmail:"manager@igt.com", siteName:"APACManufacturingOperationsTeam", filePath:"General/ATTENDANCE/Attendance.xlsx", defaultLunch:30 };
     saveLocal();
   }
 }
@@ -438,7 +438,7 @@ function renderEmpList() {
 
 function openEmpModal(key) {
   editingEmpKey=key||null;
-  const areas=(settings.areas||"Production,Warehouse,Office").split(",").map(a=>a.trim());
+  const areas=(settings.areas||"Gaming Assembly,Fintech Assembly,Repair Centre,Warehouse,Operations Support").split(",").map(a=>a.trim());
   document.getElementById("emp-area").innerHTML=areas.map(a=>`<option>${a}</option>`).join("");
   if(key){const e=employees.find(x=>x.key===key);document.getElementById("modal-title").textContent="Edit Employee";document.getElementById("emp-name").value=e.name;document.getElementById("emp-id-field").value=e.empId;document.getElementById("emp-area").value=e.area;document.getElementById("emp-start").value=e.startTime;document.getElementById("emp-end").value=e.endTime;document.getElementById("emp-hours").value=e.hours;document.getElementById("emp-pin").value=e.pin||"";document.getElementById("emp-lunch").value=e.lunchMins||30;}
   else{document.getElementById("modal-title").textContent="Add Employee";["emp-name","emp-id-field","emp-pin"].forEach(id=>document.getElementById(id).value="");document.getElementById("emp-start").value="09:00";document.getElementById("emp-end").value="17:00";document.getElementById("emp-hours").value="8";document.getElementById("emp-lunch").value=settings.defaultLunch||30;}
