@@ -3,177 +3,246 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<meta name="theme-color" content="#0f6e56"/>
-<meta name="description" content="Employee Time Tracking App"/>
-<title>TimeTrack</title>
+<meta name="theme-color" content="#003087"/>
+<meta name="description" content="IGT Employee Time Tracking"/>
+<title>IGT TimeTrack</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="icon" href="icons/icon-192.png"/>
 <link rel="apple-touch-icon" href="icons/icon-192.png"/>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  :root{
-    --teal:#0f6e56;--teal-light:#EAF3DE;--teal-dark:#085041;
-    --amber:#854F0B;--amber-light:#FAEEDA;
-    --red:#A32D2D;--red-light:#FCEBEB;
-    --blue:#185FA5;--blue-light:#E6F1FB;
-    --gray:#5F5E5A;--gray-light:#F1EFE8;
-    --bg:#f8f9fa;--surface:#fff;--border:#e0e0e0;
-    --text:#1a1a1a;--text2:#555;--text3:#888;
-    --radius:10px;--radius-sm:6px;
-    --shadow:0 1px 4px rgba(0,0,0,.08);
-  }
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-  #app{display:none}
-  #login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:2rem;text-align:center}
-  .login-card{background:var(--surface);border-radius:16px;padding:2.5rem 2rem;max-width:380px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,.1)}
-  .logo{width:64px;height:64px;background:var(--teal);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;font-size:28px}
-  .login-title{font-size:22px;font-weight:600;margin-bottom:.5rem}
-  .login-sub{font-size:14px;color:var(--text2);margin-bottom:2rem;line-height:1.5}
-  .ms-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px;border:1.5px solid var(--border);border-radius:var(--radius);background:#fff;cursor:pointer;font-size:15px;font-weight:500;transition:all .15s}
-  .ms-btn:hover{background:#f0f0f0;border-color:#999}
-  .ms-logo{width:20px;height:20px}
-  header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;height:56px;position:sticky;top:0;z-index:50}
-  .header-left{display:flex;align-items:center;gap:10px}
-  .app-logo{width:32px;height:32px;background:var(--teal);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
-  .app-title{font-size:16px;font-weight:600}
-  .user-pill{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:20px;background:var(--gray-light);font-size:13px;cursor:pointer}
-  .avatar{width:26px;height:26px;border-radius:50%;background:var(--blue-light);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
-  nav{background:var(--surface);border-bottom:1px solid var(--border);display:flex;padding:0 1.5rem;gap:0}
-  .nav-btn{padding:10px 18px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:500;color:var(--text2);border-bottom:2px solid transparent;transition:all .15s;display:flex;align-items:center;gap:6px}
-  .nav-btn.active{color:var(--teal);border-bottom-color:var(--teal)}
-  .nav-btn:hover:not(.active){color:var(--text);background:var(--gray-light)}
-  main{padding:1.5rem;max-width:1000px;margin:0 auto}
-  .section{display:none}.section.active{display:block}
-  .card{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem;box-shadow:var(--shadow)}
-  .card+.card,.card+div,.grid-card+.grid-card{margin-top:1rem}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
-  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
-  .grid4{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem}
-  label{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
-  input,select{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;background:#fff;color:var(--text);transition:border .15s}
-  input:focus,select:focus{outline:none;border-color:var(--teal)}
-  .form-row{margin-bottom:14px}
-  .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border:1.5px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer;font-size:13px;font-weight:500;color:var(--text);transition:all .15s;white-space:nowrap}
-  .btn:hover{background:var(--gray-light)}
-  .btn:active{transform:scale(.98)}
-  .btn-primary{background:var(--teal);color:#fff;border-color:var(--teal)}
-  .btn-primary:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
-  .btn-danger{color:var(--red);border-color:#f5c1c1}
-  .btn-danger:hover{background:var(--red-light)}
-  .btn-success{background:#1D9E75;color:#fff;border-color:#1D9E75}
-  .btn-success:hover{background:#0f6e56}
-  .btn-ms{background:#0078d4;color:#fff;border-color:#0078d4}
-  .btn-ms:hover{background:#005a9e}
-  .stat-card{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:1rem 1.25rem}
-  .stat-label{font-size:12px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
-  .stat-value{font-size:26px;font-weight:600}
-  .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500}
-  .badge-green{background:#EAF3DE;color:#3B6D11}
-  .badge-amber{background:#FAEEDA;color:#854F0B}
-  .badge-red{background:#FCEBEB;color:#A32D2D}
-  .badge-gray{background:#F1EFE8;color:#5F5E5A}
-  .badge-blue{background:#E6F1FB;color:#185FA5}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th{text-align:left;padding:9px 12px;font-weight:600;font-size:11px;color:var(--text2);background:var(--gray-light);text-transform:uppercase;letter-spacing:.4px}
-  th:first-child{border-radius:6px 0 0 6px}
-  th:last-child{border-radius:0 6px 6px 0}
-  td{padding:9px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
-  tr:last-child td{border-bottom:none}
-  tr:hover td{background:#fafafa}
-  .emp-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0}
-  .emp-row{display:flex;align-items:center;gap:10px}
-  .emp-select-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:1rem}
-  .emp-tile{border:1.5px solid var(--border);border-radius:var(--radius);padding:14px 12px;cursor:pointer;transition:all .15s;background:#fff;text-align:center}
-  .emp-tile:hover{border-color:#aaa;background:var(--gray-light)}
-  .emp-tile.selected{border:2px solid var(--teal);background:var(--teal-light)}
-  .emp-tile-name{font-size:13px;font-weight:600;margin-top:8px;color:var(--text)}
-  .emp-tile-area{font-size:12px;color:var(--text2);margin-top:2px}
-  .emp-tile-time{font-size:11px;color:var(--text3);margin-top:2px}
-  .clock-display{font-size:52px;font-weight:700;letter-spacing:3px;font-variant-numeric:tabular-nums;color:var(--teal)}
-  .clock-card{text-align:center;padding:2rem 1.25rem}
-  .active-banner{background:linear-gradient(135deg,#EAF3DE,#E1F5EE);border:1px solid #9FE1CB;border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:1rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-  .sync-bar{background:var(--blue-light);border:1px solid #b5d4f4;border-radius:var(--radius-sm);padding:8px 14px;font-size:13px;color:var(--blue);display:flex;align-items:center;gap:8px;margin-bottom:1rem}
-  .spinner{width:14px;height:14px;border:2px solid #b5d4f4;border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a1a1a;color:#fff;padding:11px 22px;border-radius:24px;font-size:13px;z-index:999;opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  .toast.error{background:#A32D2D}
-  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center;padding:1rem}
-  .modal-overlay.open{display:flex}
-  .modal{background:#fff;border-radius:14px;padding:1.75rem;width:480px;max-width:100%;position:relative;box-shadow:0 8px 40px rgba(0,0,0,.15)}
-  .modal-title{font-size:17px;font-weight:600;margin-bottom:1.25rem}
-  .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
-  .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px}
-  .section-title{font-size:18px;font-weight:600}
-  .empty{text-align:center;padding:2.5rem;color:var(--text3);font-size:14px}
-  .divider{height:1px;background:var(--border);margin:1rem 0}
-  .tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;background:var(--gray-light);color:var(--gray)}
-  .time-diff-pos{color:#1D9E75;font-weight:500}
-  .time-diff-neg{color:var(--red);font-weight:500}
-  .report-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .install-banner{background:var(--teal-light);border:1px solid #9FE1CB;border-radius:var(--radius);padding:.75rem 1rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-  .offline-badge{background:var(--amber-light);color:var(--amber);padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500}
-  @media(max-width:640px){
-    .grid2,.grid3{grid-template-columns:1fr}
-    main{padding:1rem}
-    .clock-display{font-size:38px}
-    .report-controls{flex-direction:column;align-items:stretch}
-  }
-  .config-notice{background:var(--amber-light);border:1px solid #FAC775;border-radius:var(--radius);padding:1rem;margin-bottom:1rem;font-size:13px;color:var(--amber)}
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --igt-navy:#003087;
+  --igt-navy-dark:#001f5c;
+  --igt-navy-light:#e8edf7;
+  --igt-red:#c8102e;
+  --igt-red-dark:#a00d24;
+  --igt-red-light:#fce8eb;
+  --igt-gold:#f0a500;
+  --igt-gold-light:#fef4e0;
+  --gray:#5a5f6e;
+  --gray-light:#f4f5f8;
+  --border:#dde1eb;
+  --surface:#ffffff;
+  --text:#1a1d2e;
+  --text2:#5a5f6e;
+  --text3:#9299a8;
+  --radius:10px;--radius-sm:6px;
+  --shadow:0 1px 4px rgba(0,48,135,.08);
+  --shadow-md:0 4px 16px rgba(0,48,135,.12);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--gray-light);color:var(--text);min-height:100vh}
+#app{display:none}
+
+/* ── Login ── */
+#login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(150deg,var(--igt-navy-dark) 0%,var(--igt-navy) 60%,#1a4fa0 100%);padding:2rem}
+.login-card{background:#fff;border-radius:16px;padding:2.5rem 2rem;max-width:400px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.25);text-align:center}
+.igt-logo-wrap{margin:0 auto 1.5rem}
+.igt-wordmark{font-size:36px;font-weight:800;letter-spacing:2px;color:var(--igt-navy)}
+.igt-wordmark span{color:var(--igt-red)}
+.igt-sub{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--text2);margin-top:2px}
+.login-title{font-size:18px;font-weight:600;color:var(--text);margin-bottom:.4rem}
+.login-desc{font-size:13px;color:var(--text2);margin-bottom:2rem;line-height:1.5}
+.ms-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:13px;border:1.5px solid var(--border);border-radius:var(--radius);background:#fff;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);transition:all .15s}
+.ms-btn:hover{background:var(--gray-light);border-color:#aaa}
+.login-footer{margin-top:1.5rem;font-size:11px;color:var(--text3)}
+
+/* ── Header ── */
+header{background:var(--igt-navy);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:50;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.header-brand{display:flex;align-items:center;gap:12px}
+.header-logo{display:flex;flex-direction:column;line-height:1}
+.header-igt{font-size:22px;font-weight:800;letter-spacing:2px;color:#fff}
+.header-igt span{color:var(--igt-red)}
+.header-app{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.55);margin-top:1px}
+.header-divider{width:1px;height:32px;background:rgba(255,255,255,.2)}
+.header-title{font-size:14px;color:rgba(255,255,255,.75);font-weight:400}
+.user-pill{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:20px;background:rgba(255,255,255,.12);cursor:pointer;transition:background .15s;border:1px solid rgba(255,255,255,.15)}
+.user-pill:hover{background:rgba(255,255,255,.2)}
+.user-pill span{font-size:13px;color:rgba(255,255,255,.9)}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--igt-red);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+
+/* ── Nav ── */
+nav{background:var(--igt-navy-dark);display:flex;padding:0 1.5rem;border-bottom:3px solid var(--igt-red)}
+.nav-btn{padding:12px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:rgba(255,255,255,.55);border-bottom:3px solid transparent;margin-bottom:-3px;transition:all .15s;letter-spacing:.3px;text-transform:uppercase}
+.nav-btn.active{color:#fff;border-bottom-color:var(--igt-gold)}
+.nav-btn:hover:not(.active){color:rgba(255,255,255,.85);background:rgba(255,255,255,.06)}
+
+/* ── Layout ── */
+main{padding:1.5rem;max-width:1060px;margin:0 auto}
+.section{display:none}.section.active{display:block}
+.card{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:1.25rem;box-shadow:var(--shadow)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
+
+/* ── Forms ── */
+label{display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
+input,select{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:14px;background:#fff;color:var(--text);transition:border .15s}
+input:focus,select:focus{outline:none;border-color:var(--igt-navy)}
+.form-row{margin-bottom:14px}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border:1.5px solid var(--border);border-radius:var(--radius-sm);background:#fff;cursor:pointer;font-size:13px;font-weight:600;color:var(--text);transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--gray-light)}
+.btn:active{transform:scale(.98)}
+.btn-navy{background:var(--igt-navy);color:#fff;border-color:var(--igt-navy)}
+.btn-navy:hover{background:var(--igt-navy-dark)}
+.btn-red{background:var(--igt-red);color:#fff;border-color:var(--igt-red)}
+.btn-red:hover{background:var(--igt-red-dark)}
+.btn-danger{color:var(--igt-red);border-color:#f5c1c1}
+.btn-danger:hover{background:var(--igt-red-light)}
+.btn-success{background:#1a7a4a;color:#fff;border-color:#1a7a4a}
+.btn-success:hover{background:#145c38}
+.btn-ms{background:#0078d4;color:#fff;border-color:#0078d4}
+.btn-ms:hover{background:#005a9e}
+
+/* ── Stat cards ── */
+.stat-card{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:1.1rem 1.25rem;position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:var(--igt-navy)}
+.stat-label{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.stat-value{font-size:28px;font-weight:700;color:var(--igt-navy)}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.badge-green{background:#e6f4ed;color:#1a7a4a}
+.badge-amber{background:var(--igt-gold-light);color:#a07000}
+.badge-red{background:var(--igt-red-light);color:var(--igt-red-dark)}
+.badge-gray{background:var(--gray-light);color:var(--gray)}
+.badge-navy{background:var(--igt-navy-light);color:var(--igt-navy)}
+
+/* ── Table ── */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:9px 12px;font-weight:700;font-size:11px;color:#fff;background:var(--igt-navy);text-transform:uppercase;letter-spacing:.4px}
+th:first-child{border-radius:6px 0 0 6px}
+th:last-child{border-radius:0 6px 6px 0}
+td{padding:9px 12px;border-bottom:1px solid #f0f2f8;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f8f9fc}
+
+/* ── Employee tiles ── */
+.emp-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+.emp-row{display:flex;align-items:center;gap:10px}
+.emp-select-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px;margin-bottom:1rem}
+.emp-tile{border:1.5px solid var(--border);border-radius:var(--radius);padding:14px 12px;cursor:pointer;transition:all .15s;background:#fff;text-align:center}
+.emp-tile:hover{border-color:var(--igt-navy);box-shadow:0 2px 8px rgba(0,48,135,.1)}
+.emp-tile.selected{border:2px solid var(--igt-navy);background:var(--igt-navy-light)}
+.emp-tile-name{font-size:13px;font-weight:600;margin-top:8px;color:var(--text)}
+.emp-tile-area{font-size:12px;color:var(--text2);margin-top:2px}
+.emp-tile-time{font-size:11px;color:var(--text3);margin-top:2px}
+
+/* ── Clock ── */
+.clock-display{font-size:56px;font-weight:800;letter-spacing:4px;font-variant-numeric:tabular-nums;color:var(--igt-navy)}
+.clock-card{text-align:center;padding:2rem 1.25rem;background:linear-gradient(135deg,#fff 0%,var(--igt-navy-light) 100%)}
+.clock-date{font-size:13px;color:var(--text2);margin:6px 0 1.5rem}
+
+/* ── Active banner ── */
+.active-banner{background:linear-gradient(135deg,#e6f4ed,#d4eddf);border:1px solid #9fd4b8;border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:1rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+
+/* ── Install banner ── */
+.install-banner{background:var(--igt-navy-light);border:1px solid #b3c2e0;border-radius:var(--radius);padding:.75rem 1rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+
+/* ── Misc ── */
+.tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;background:var(--igt-navy-light);color:var(--igt-navy)}
+.time-diff-pos{color:#1a7a4a;font-weight:600}
+.time-diff-neg{color:var(--igt-red);font-weight:600}
+.divider{height:1px;background:var(--border);margin:1rem 0}
+.empty{text-align:center;padding:2.5rem;color:var(--text3);font-size:14px}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px}
+.section-title{font-size:18px;font-weight:700;color:var(--igt-navy)}
+.report-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.config-notice{background:var(--igt-gold-light);border:1px solid var(--igt-gold);border-radius:var(--radius);padding:1rem;margin-bottom:1rem;font-size:13px;color:#7a5500}
+.sync-status{font-size:12px;color:rgba(255,255,255,.6)}
+.offline-badge{background:var(--igt-red);color:#fff;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+
+/* ── Modal ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,10,40,.5);z-index:100;align-items:center;justify-content:center;padding:1rem}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:14px;padding:1.75rem;width:500px;max-width:100%;box-shadow:0 12px 48px rgba(0,0,0,.2)}
+.modal-title{font-size:17px;font-weight:700;color:var(--igt-navy);margin-bottom:1.25rem;padding-bottom:.75rem;border-bottom:2px solid var(--igt-navy)}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--igt-navy);color:#fff;padding:11px 22px;border-radius:24px;font-size:13px;font-weight:500;z-index:999;opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.error{background:var(--igt-red)}
+
+/* ── Page header strip ── */
+.page-strip{background:var(--igt-navy-light);border-bottom:1px solid var(--border);padding:.6rem 1.5rem;display:flex;align-items:center;gap:8px}
+.page-strip-title{font-size:13px;font-weight:700;color:var(--igt-navy);text-transform:uppercase;letter-spacing:.5px}
+.page-strip-date{font-size:12px;color:var(--text2);margin-left:auto}
+
+@media(max-width:640px){
+  .grid2,.grid3{grid-template-columns:1fr}
+  main{padding:1rem}
+  .clock-display{font-size:38px}
+  nav .nav-btn{padding:10px 12px;font-size:11px}
+  .report-controls{flex-direction:column;align-items:stretch}
+}
 </style>
 </head>
 <body>
 
-<!-- Login Screen -->
+<!-- Login -->
 <div id="login-screen">
   <div class="login-card">
-    <div class="logo">⏱</div>
-    <div class="login-title">TimeTrack</div>
-    <div class="login-sub">Sign in with your Microsoft work account to access the time tracking system.</div>
+    <div class="igt-logo-wrap">
+      <div class="igt-wordmark">I<span>G</span>T</div>
+      <div class="igt-sub">International Game Technology</div>
+    </div>
+    <div style="height:1px;background:var(--border);margin:1.25rem 0"></div>
+    <div class="login-title">Employee Time Tracking</div>
+    <div class="login-desc">Sign in with your IGT Microsoft account to access the attendance system.</div>
     <button class="ms-btn" onclick="signIn()">
-      <svg class="ms-logo" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
-        <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
-        <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
-        <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
-        <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-      </svg>
+      <svg width="20" height="20" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
       Sign in with Microsoft
     </button>
     <div id="login-status" style="margin-top:1rem;font-size:13px;color:var(--text2)"></div>
+    <div class="login-footer">IGT APAC Manufacturing Operations · Secure access via Microsoft 365</div>
   </div>
 </div>
 
-<!-- Main App -->
+<!-- App -->
 <div id="app">
   <div id="install-banner-wrap"></div>
   <header>
-    <div class="header-left">
-      <div class="app-logo">⏱</div>
-      <div class="app-title">TimeTrack</div>
+    <div class="header-brand">
+      <div class="header-logo">
+        <div class="header-igt">I<span>G</span>T</div>
+        <div class="header-app">TimeTrack</div>
+      </div>
+      <div class="header-divider"></div>
+      <div class="header-title">APAC Manufacturing Operations</div>
       <span id="offline-indicator" style="display:none" class="offline-badge">Offline</span>
     </div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <div id="sync-status" style="font-size:12px;color:var(--text3)"></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="sync-status" id="sync-status"></div>
       <div class="user-pill" onclick="signOut()">
         <div class="avatar" id="user-avatar">?</div>
-        <span id="user-name" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">User</span>
-        <span style="color:var(--text3);font-size:11px">Sign out</span>
+        <span id="user-name">User</span>
+        <span style="color:rgba(255,255,255,.4);font-size:11px">↪ Sign out</span>
       </div>
     </div>
   </header>
+
   <nav>
-    <button class="nav-btn active" onclick="showSection('clock',this)">⏰ Clock in/out</button>
-    <button class="nav-btn" onclick="showSection('report',this)">📊 Daily report</button>
-    <button class="nav-btn" onclick="showSection('admin',this)">⚙️ Admin</button>
+    <button class="nav-btn active" onclick="showSection('clock',this)">⏰ Clock In/Out</button>
+    <button class="nav-btn" onclick="showSection('report',this)">📊 Daily Report</button>
+    <button class="nav-btn" onclick="showSection('admin',this)">⚙ Admin</button>
   </nav>
+
+  <div class="page-strip">
+    <span class="page-strip-title" id="strip-title">Attendance</span>
+    <span class="page-strip-date" id="strip-date"></span>
+  </div>
+
   <main>
-    <!-- CLOCK SECTION -->
+    <!-- CLOCK -->
     <div class="section active" id="sec-clock">
       <div id="active-banner"></div>
       <div class="card clock-card">
+        <div style="display:inline-block;background:var(--igt-navy);color:#fff;font-size:10px;font-weight:700;letter-spacing:2px;padding:4px 12px;border-radius:20px;text-transform:uppercase;margin-bottom:1rem">Live Clock</div>
         <div class="clock-display" id="live-clock">--:--:--</div>
-        <div style="font-size:13px;color:var(--text2);margin:6px 0 1.5rem" id="clock-date"></div>
-        <div style="margin-bottom:1.25rem;text-align:left">
+        <div class="clock-date" id="clock-date"></div>
+        <div style="text-align:left;margin-bottom:1.25rem">
           <label>Select employee</label>
           <div class="emp-select-grid" id="emp-select-grid"></div>
         </div>
@@ -181,20 +250,20 @@
       </div>
       <div class="card" style="margin-top:1rem">
         <div class="section-head">
-          <div style="font-weight:600;font-size:15px">Today's attendance</div>
+          <div class="section-title">Today's Attendance</div>
           <div id="today-date-label" style="font-size:13px;color:var(--text2)"></div>
         </div>
         <div id="today-table-wrap"></div>
       </div>
     </div>
 
-    <!-- REPORT SECTION -->
+    <!-- REPORT -->
     <div class="section" id="sec-report">
       <div class="section-head">
-        <div class="section-title">📋 Daily timesheet report</div>
+        <div class="section-title">Daily Timesheet Report</div>
         <div class="report-controls">
           <input type="date" id="report-date" style="width:160px"/>
-          <button class="btn btn-primary" onclick="genReport()">↻ Generate</button>
+          <button class="btn btn-navy" onclick="genReport()">↻ Generate</button>
           <button class="btn btn-success" onclick="exportExcel()">⬇ Export Excel</button>
         </div>
       </div>
@@ -202,38 +271,40 @@
       <div id="report-content"></div>
     </div>
 
-    <!-- ADMIN SECTION -->
+    <!-- ADMIN -->
     <div class="section" id="sec-admin">
       <div id="config-notice" class="config-notice" style="display:none">
-        ⚠️ <strong>Setup required:</strong> Please enter your SharePoint file details and save settings before using the app.
+        ⚠ <strong>Setup required:</strong> Configure your SharePoint file path below and save settings.
       </div>
       <div class="grid2" style="align-items:start">
         <div>
           <div class="section-head">
-            <div style="font-weight:600;font-size:15px">Employees</div>
-            <button class="btn btn-primary" onclick="openEmpModal()">+ Add employee</button>
+            <div class="section-title">Employees</div>
+            <button class="btn btn-navy" onclick="openEmpModal()">+ Add Employee</button>
           </div>
           <div id="emp-list"></div>
         </div>
         <div>
-          <div style="font-weight:600;font-size:15px;margin-bottom:.75rem">Settings</div>
+          <div class="section-title" style="margin-bottom:.75rem">Settings</div>
           <div class="card">
+            <div style="font-size:11px;font-weight:700;color:var(--igt-navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:.75rem;padding-bottom:.5rem;border-bottom:2px solid var(--igt-navy)">SharePoint Configuration</div>
             <div class="form-row">
               <label>SharePoint site name</label>
-              <input type="text" id="cfg-site" placeholder="e.g. APACManufacturingOperationsTeam"/>
+              <input type="text" id="cfg-site" placeholder="APACManufacturingOperationsTeam"/>
             </div>
             <div class="form-row">
-              <label>Excel file path in SharePoint</label>
-              <input type="text" id="cfg-path" placeholder="e.g. General/ATTENDANCE/Attendance.xlsx"/>
-            </div>
-            <div class="form-row">
-              <label>Work areas (comma separated)</label>
-              <input type="text" id="cfg-areas" placeholder="Kitchen, Front desk, Warehouse"/>
+              <label>Excel file path</label>
+              <input type="text" id="cfg-path" placeholder="General/ATTENDANCE/Attendance.xlsx"/>
             </div>
             <div class="divider"></div>
+            <div style="font-size:11px;font-weight:700;color:var(--igt-navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:.75rem">Report Configuration</div>
             <div class="form-row">
-              <label>Company name</label>
-              <input type="text" id="cfg-company" placeholder="Acme Corp"/>
+              <label>Work areas (comma separated)</label>
+              <input type="text" id="cfg-areas" placeholder="Production, Warehouse, Office"/>
+            </div>
+            <div class="form-row">
+              <label>Company / Site name</label>
+              <input type="text" id="cfg-company" placeholder="IGT APAC Manufacturing"/>
             </div>
             <div class="form-row">
               <label>Report recipient name</label>
@@ -241,19 +312,19 @@
             </div>
             <div class="form-row">
               <label>Report recipient email</label>
-              <input type="email" id="cfg-recipient-email" placeholder="manager@company.com"/>
+              <input type="email" id="cfg-recipient-email" placeholder="manager@igt.com"/>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn-primary" onclick="saveSettings()">✓ Save settings</button>
-              <button class="btn btn-ms" onclick="testConnection()">🔗 Test SharePoint connection</button>
+              <button class="btn btn-navy" onclick="saveSettings()">✓ Save Settings</button>
+              <button class="btn btn-ms" onclick="testConnection()">🔗 Test Connection</button>
             </div>
           </div>
           <div class="card" style="margin-top:1rem">
-            <div style="font-weight:600;font-size:14px;margin-bottom:.75rem">SharePoint sync</div>
-            <div style="font-size:13px;color:var(--text2);margin-bottom:.75rem">Manually sync data to/from your SharePoint Excel file.</div>
+            <div style="font-size:11px;font-weight:700;color:var(--igt-navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:.75rem">SharePoint Sync</div>
+            <div style="font-size:13px;color:var(--text2);margin-bottom:.75rem">Manually sync data with your SharePoint Excel file.</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button class="btn" onclick="syncFromSharePoint()">⬇ Pull from SharePoint</button>
-              <button class="btn btn-primary" onclick="syncToSharePoint()">⬆ Push to SharePoint</button>
+              <button class="btn btn-navy" onclick="syncToSharePoint()">⬆ Push to SharePoint</button>
             </div>
             <div id="sync-log" style="margin-top:.75rem;font-size:12px;color:var(--text2)"></div>
           </div>
@@ -261,12 +332,16 @@
       </div>
     </div>
   </main>
+
+  <footer style="text-align:center;padding:1.5rem;font-size:11px;color:var(--text3);border-top:1px solid var(--border);margin-top:2rem">
+    © 2025 International Game Technology PLC · APAC Manufacturing Operations · Employee Attendance System
+  </footer>
 </div>
 
 <!-- Employee Modal -->
 <div class="modal-overlay" id="emp-modal">
   <div class="modal">
-    <div class="modal-title" id="modal-title">Add employee</div>
+    <div class="modal-title">Add / Edit Employee</div>
     <div class="grid2">
       <div class="form-row"><label>Full name</label><input type="text" id="emp-name" placeholder="Jane Smith"/></div>
       <div class="form-row"><label>Employee ID</label><input type="text" id="emp-id-field" placeholder="EMP001"/></div>
@@ -279,17 +354,38 @@
     <div class="form-row"><label>Standard hours/day</label><input type="number" id="emp-hours" value="8" min="1" max="24" step="0.5"/></div>
     <div class="actions">
       <button class="btn" onclick="closeEmpModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveEmployee()">✓ Save</button>
+      <button class="btn btn-navy" onclick="saveEmployee()">✓ Save Employee</button>
     </div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
-<!-- MSAL + XLSX libraries -->
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="app.js"></script>
-<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(console.error)}</script>
+<script>
+// Strip date updater
+function updateStrip(){
+  const el=document.getElementById('strip-date');
+  if(el) el.textContent=new Date().toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+}
+updateStrip();
+setInterval(updateStrip,60000);
+
+// Nav strip title
+document.querySelectorAll('.nav-btn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    const map={'clock':'Attendance Clock','report':'Timesheet Report','admin':'Administration'};
+    const id=b.getAttribute('onclick').match(/'(\w+)'/)?.[1];
+    const el=document.getElementById('strip-title');
+    if(el&&id) el.textContent=map[id]||'';
+  });
+});
+
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(console.error);
+}
+</script>
 </body>
 </html>
