@@ -15,6 +15,8 @@ function init() {
   updateOnlineStatus();
   window.addEventListener("online", updateOnlineStatus);
   window.addEventListener("offline", updateOnlineStatus);
+  // Init SharePoint sync
+  initSpSync();
 }
 
 function updateOnlineStatus() {
@@ -297,6 +299,7 @@ function performClockAction(empKey) {
     toast(`${emp.name} clocked in at ${timeStamp}`,"success");
   }
   renderTodayTable(); renderActiveBanner();
+  spAutoSync(); // auto push to SharePoint after every clock action
   setTimeout(()=>showScreen("screen-login"), 4000);
 }
 
@@ -509,26 +512,30 @@ function deleteEmp(key) {
 }
 
 function loadSettingsForm() {
-  document.getElementById("cfg-admin-pin").value=settings.adminPin||"0000";
-  document.getElementById("cfg-site").value=settings.siteName||"APACManufacturingOperationsTeam";
-  document.getElementById("cfg-path").value=settings.filePath||"General/ATTENDANCE/Attendance.xlsx";
-  document.getElementById("cfg-areas").value=settings.areas||"";
-  document.getElementById("cfg-company").value=settings.company||"";
-  document.getElementById("cfg-lunch").value=settings.defaultLunch||30;
+  document.getElementById("cfg-admin-pin").value = settings.adminPin || "0000";
+  document.getElementById("cfg-site").value = settings.siteUrl || "https://igtplc.sharepoint.com/sites/APACManufacturingOperationsTeam";
+  document.getElementById("cfg-clientid").value = settings.spClientId || "";
+  document.getElementById("cfg-areas").value = settings.areas || "";
+  document.getElementById("cfg-company").value = settings.company || "";
+  document.getElementById("cfg-lunch").value = settings.defaultLunch || 30;
   renderSchedulesList();
+  renderLatestVersion();
 }
 
 function saveSettings() {
-  const adminPin=document.getElementById("cfg-admin-pin").value.trim();
-  if(!/^\d{4}$/.test(adminPin)){toast("Admin PIN must be 4 digits","error");return;}
-  settings={...settings,adminPin,
-    siteName:document.getElementById("cfg-site").value.trim(),
-    filePath:document.getElementById("cfg-path").value.trim(),
-    areas:document.getElementById("cfg-areas").value,
-    company:document.getElementById("cfg-company").value.trim(),
-    defaultLunch:parseInt(document.getElementById("cfg-lunch").value)||30,
+  const adminPin = document.getElementById("cfg-admin-pin").value.trim();
+  if (!/^\d{4}$/.test(adminPin)) { toast("Admin PIN must be 4 digits", "error"); return; }
+  settings = { ...settings,
+    adminPin,
+    siteUrl: document.getElementById("cfg-site").value.trim(),
+    spClientId: document.getElementById("cfg-clientid").value.trim(),
+    areas: document.getElementById("cfg-areas").value,
+    company: document.getElementById("cfg-company").value.trim(),
+    defaultLunch: parseInt(document.getElementById("cfg-lunch").value) || 30,
   };
-  saveLocal();toast("Settings saved","success");
+  saveLocal();
+  toast("Settings saved", "success");
+  renderReportRecipient();
 }
 
 function showSection(id,btn) {
@@ -992,8 +999,23 @@ function showScreen(id) {
 }
 
 // ── Version History ───────────────────────────────────────────
-const APP_VERSION = "DV17";
+const APP_VERSION = "DV18";
 const VERSION_HISTORY = [
+  {
+    version: "DV18",
+    date: "2026-06-26",
+    status: "current",
+    changes: [
+      "SharePoint List sync — real-time read/write to SharePoint Lists",
+      "All PCs now share live attendance data via SharePoint",
+      "Sign in with Microsoft button in Admin → Settings",
+      "Auto-sync to SharePoint on every clock in/out",
+      "Auto-pull from SharePoint on app load if signed in",
+      "Manual push/pull buttons in Admin settings",
+      "Connection test verifies all 3 lists are accessible",
+      "Sync log shows last 10 sync operations",
+    ]
+  },
   {
     version: "DV17",
     date: "2026-06-25",
@@ -1474,8 +1496,388 @@ function clearFaceEnroll() {
   stopFaceEnroll();
 }
 
+// ── SharePoint List Sync Engine ───────────────────────────────
+const SP_SCOPES = ["Sites.ReadWrite.All", "Files.ReadWrite", "User.Read"];
+const SP_DEFAULT_CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"; // MS Office public client
+let spMsal = null;
+let spToken = null;
+let spSiteId = null;
+let spSyncing = false;
+
+function getSiteUrl() {
+  return settings.siteUrl || "https://igtplc.sharepoint.com/sites/APACManufacturingOperationsTeam";
+}
+
+function getClientId() {
+  return settings.spClientId || SP_DEFAULT_CLIENT_ID;
+}
+
+async function initMsal() {
+  if (spMsal) return spMsal;
+  spMsal = new msal.PublicClientApplication({
+    auth: {
+      clientId: getClientId(),
+      authority: "https://login.microsoftonline.com/common",
+      redirectUri: window.location.origin + window.location.pathname,
+      navigateToLoginRequestUrl: false,
+    },
+    cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true },
+  });
+  await spMsal.initialize();
+  // Handle redirect
+  try {
+    const resp = await spMsal.handleRedirectPromise();
+    if (resp?.accessToken) {
+      spToken = resp.accessToken;
+      updateSpAuthStatus(true, resp.account?.name);
+    }
+  } catch(e) { console.error("MSAL redirect error:", e); }
+  return spMsal;
+}
+
+async function spSignIn() {
+  const msal = await initMsal();
+  const accounts = msal.getAllAccounts();
+  if (accounts.length > 0) {
+    try {
+      const resp = await msal.acquireTokenSilent({ scopes: SP_SCOPES, account: accounts[0] });
+      spToken = resp.accessToken;
+      updateSpAuthStatus(true, accounts[0].name);
+      spLog("✓ Already signed in as " + accounts[0].name);
+      return true;
+    } catch(e) {}
+  }
+  try {
+    await msal.loginRedirect({ scopes: SP_SCOPES });
+  } catch(e) {
+    spLog("✗ Sign-in failed: " + e.message);
+    return false;
+  }
+}
+
+async function getSpToken() {
+  const msalInst = await initMsal();
+  const accounts = msalInst.getAllAccounts();
+  if (!accounts.length) return null;
+  try {
+    const resp = await msalInst.acquireTokenSilent({ scopes: SP_SCOPES, account: accounts[0] });
+    spToken = resp.accessToken;
+    return spToken;
+  } catch(e) {
+    try {
+      await msalInst.acquireTokenRedirect({ scopes: SP_SCOPES, account: accounts[0] });
+    } catch(e2) {}
+    return null;
+  }
+}
+
+function spSignOut() {
+  if (spMsal) spMsal.logoutRedirect();
+}
+
+function updateSpAuthStatus(signedIn, name) {
+  const el = document.getElementById("sp-auth-status");
+  const btn = document.getElementById("sp-signout-btn");
+  if (!el) return;
+  if (signedIn) {
+    el.innerHTML = `<span class="badge badge-green">✓ Signed in${name ? " as " + name.split(" ")[0] : ""}</span>`;
+    if (btn) btn.style.display = "";
+  } else {
+    el.innerHTML = `<span class="badge badge-gray">Not signed in</span>`;
+    if (btn) btn.style.display = "none";
+  }
+}
+
+async function getSiteId() {
+  if (spSiteId) return spSiteId;
+  const token = await getSpToken();
+  if (!token) return null;
+  const url = getSiteUrl();
+  // Extract hostname and path from site URL
+  const match = url.match(/https:\/\/([^/]+)(\/sites\/[^/]+)/);
+  if (!match) { spLog("✗ Invalid site URL"); return null; }
+  const hostname = match[1];
+  const sitePath = match[2];
+  const resp = await fetch(`https://graph.microsoft.com/v1.0/sites/${hostname}:${sitePath}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!resp.ok) { spLog("✗ Could not find site: " + resp.status); return null; }
+  const data = await resp.json();
+  spSiteId = data.id;
+  return spSiteId;
+}
+
+async function spRequest(method, path, body) {
+  const token = await getSpToken();
+  if (!token) throw new Error("Not signed in to SharePoint");
+  const opts = {
+    method,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const resp = await fetch(`https://graph.microsoft.com/v1.0${path}`, opts);
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`Graph API ${resp.status}: ${err}`);
+  }
+  if (resp.status === 204) return null;
+  return resp.json();
+}
+
+async function getListItems(siteId, listName) {
+  let items = [], url = `/sites/${siteId}/lists/${listName}/items?expand=fields&$top=500`;
+  while (url) {
+    const data = await spRequest("GET", url);
+    items = items.concat(data.value || []);
+    url = data["@odata.nextLink"] ? data["@odata.nextLink"].replace("https://graph.microsoft.com/v1.0", "") : null;
+  }
+  return items;
+}
+
+async function addListItem(siteId, listName, fields) {
+  return spRequest("POST", `/sites/${siteId}/lists/${listName}/items`, { fields });
+}
+
+async function updateListItem(siteId, listName, itemId, fields) {
+  return spRequest("PATCH", `/sites/${siteId}/lists/${listName}/items/${itemId}/fields`, fields);
+}
+
+async function deleteListItem(siteId, listName, itemId) {
+  return spRequest("DELETE", `/sites/${siteId}/lists/${listName}/items/${itemId}`);
+}
+
+// ── Test Connection ───────────────────────────────────────────
+async function spTestConnection() {
+  spLog("Testing connection…");
+  try {
+    const siteId = await getSiteId();
+    if (!siteId) { spLog("✗ Could not get site ID — check Site URL and sign in"); return; }
+    // Test each list
+    for (const listName of ["TimeTrack_Employees","TimeTrack_Attendance","TimeTrack_Settings"]) {
+      const items = await getListItems(siteId, listName);
+      spLog(`✓ ${listName} — ${items.length} items`);
+    }
+    spLog("✓ All lists accessible! Connection successful.");
+    toast("✓ SharePoint connection successful!", "success");
+  } catch(e) {
+    spLog("✗ Connection failed: " + e.message);
+    toast("Connection failed: " + e.message, "error");
+  }
+}
+
+// ── Push all data to SharePoint ───────────────────────────────
+async function spPushAll() {
+  if (spSyncing) { toast("Sync already in progress", "error"); return; }
+  spSyncing = true;
+  spLog("Pushing to SharePoint…");
+  setSyncStatus("Syncing…");
+  try {
+    const siteId = await getSiteId();
+    if (!siteId) throw new Error("Not connected — sign in first");
+
+    // ── Push Employees ──
+    spLog("Syncing employees…");
+    const spEmps = await getListItems(siteId, "TimeTrack_Employees");
+    const spEmpMap = {};
+    spEmps.forEach(i => { if (i.fields.EmpKey) spEmpMap[i.fields.EmpKey] = i.id; });
+
+    for (const e of employees) {
+      const fields = {
+        Title: e.name,
+        EmpKey: e.key,
+        EmployeeID: e.empId || "",
+        Area: e.area || "",
+        StartTime: e.startTime || "",
+        EndTime: e.endTime || "",
+        HoursPerDay: e.hours || 8,
+        LunchMins: e.lunchMins || 0,
+        EmpStatus: e.status || "Permanent",
+        PIN: e.pin || "",
+        FaceData: e.faceDescriptor ? JSON.stringify(e.faceDescriptor) : "",
+      };
+      if (spEmpMap[e.key]) {
+        await updateListItem(siteId, "TimeTrack_Employees", spEmpMap[e.key], fields);
+      } else {
+        await addListItem(siteId, "TimeTrack_Employees", fields);
+      }
+    }
+    spLog(`✓ ${employees.length} employees synced`);
+
+    // ── Push Attendance ──
+    spLog("Syncing attendance records…");
+    const spAtt = await getListItems(siteId, "TimeTrack_Attendance");
+    const spAttMap = {};
+    spAtt.forEach(i => { if (i.fields.EmpKey && i.fields.AttendanceDate) spAttMap[`${i.fields.EmpKey}_${i.fields.AttendanceDate}`] = i.id; });
+
+    for (const e of clockEntries) {
+      const key = `${e.empKey}_${e.date}`;
+      const fields = {
+        Title: `${e.name} — ${e.date}`,
+        EmpKey: e.empKey || "",
+        EmployeeID: e.empId || "",
+        Area: e.area || "",
+        AttendanceDate: e.date || "",
+        TimeIn: e.timeIn || "",
+        TimeOut: e.timeOut || "",
+        StdStart: e.stdStart || "",
+        StdEnd: e.stdEnd || "",
+        StdHours: e.stdHours || 8,
+        LunchMins: e.lunchMins || 0,
+        EmpStatus: e.status || "",
+      };
+      if (spAttMap[key]) {
+        await updateListItem(siteId, "TimeTrack_Attendance", spAttMap[key], fields);
+      } else {
+        await addListItem(siteId, "TimeTrack_Attendance", fields);
+      }
+    }
+    spLog(`✓ ${clockEntries.length} attendance records synced`);
+
+    // ── Push Settings ──
+    spLog("Syncing settings…");
+    const spSets = await getListItems(siteId, "TimeTrack_Settings");
+    const spSetMap = {};
+    spSets.forEach(i => { if (i.fields.SettingKey) spSetMap[i.fields.SettingKey] = i.id; });
+    for (const [k, v] of Object.entries(settings)) {
+      if (typeof v === "string" || typeof v === "number") {
+        const fields = { Title: k, SettingKey: k, SettingValue: String(v) };
+        if (spSetMap[k]) await updateListItem(siteId, "TimeTrack_Settings", spSetMap[k], fields);
+        else await addListItem(siteId, "TimeTrack_Settings", fields);
+      }
+    }
+    spLog(`✓ Settings synced`);
+
+    const now = new Date().toLocaleTimeString("en-AU", { hour:"2-digit", minute:"2-digit" });
+    setSyncStatus("Synced " + now);
+    spLog(`✓ Push complete at ${now}`);
+    toast("✓ Pushed to SharePoint successfully!", "success");
+  } catch(e) {
+    spLog("✗ Push failed: " + e.message);
+    toast("Push failed: " + e.message, "error");
+    setSyncStatus("Sync failed");
+  }
+  spSyncing = false;
+}
+
+// ── Pull all data from SharePoint ─────────────────────────────
+async function spPullAll(silent = false) {
+  if (spSyncing) return;
+  const token = await getSpToken();
+  if (!token) {
+    if (!silent) spLog("Not signed in — click 'Sign in to SharePoint' first");
+    return;
+  }
+  spSyncing = true;
+  if (!silent) spLog("Pulling from SharePoint…");
+  setSyncStatus("Syncing…");
+  try {
+    const siteId = await getSiteId();
+    if (!siteId) throw new Error("Could not connect to site");
+
+    // ── Pull Employees ──
+    const spEmps = await getListItems(siteId, "TimeTrack_Employees");
+    if (spEmps.length) {
+      employees = spEmps.map(i => ({
+        key: i.fields.EmpKey || "e" + i.id,
+        name: i.fields.Title || "",
+        empId: i.fields.EmployeeID || "",
+        area: i.fields.Area || "",
+        startTime: i.fields.StartTime || "09:00",
+        endTime: i.fields.EndTime || "17:00",
+        hours: i.fields.HoursPerDay || 8,
+        lunchMins: i.fields.LunchMins || 0,
+        status: i.fields.EmpStatus || "Permanent",
+        pin: i.fields.PIN || "0000",
+        faceDescriptor: i.fields.FaceData ? JSON.parse(i.fields.FaceData) : null,
+      })).filter(e => e.name);
+      if (!silent) spLog(`✓ ${employees.length} employees loaded`);
+    }
+
+    // ── Pull Attendance ──
+    const spAtt = await getListItems(siteId, "TimeTrack_Attendance");
+    if (spAtt.length) {
+      const spEntries = spAtt.map(i => ({
+        empKey: i.fields.EmpKey || "",
+        empId: i.fields.EmployeeID || "",
+        name: i.fields.Title?.replace(/ — .*/, "") || "",
+        area: i.fields.Area || "",
+        date: i.fields.AttendanceDate || "",
+        timeIn: i.fields.TimeIn || null,
+        timeOut: i.fields.TimeOut || null,
+        stdStart: i.fields.StdStart || "",
+        stdEnd: i.fields.StdEnd || "",
+        stdHours: i.fields.StdHours || 8,
+        lunchMins: i.fields.LunchMins || 0,
+        status: i.fields.EmpStatus || "",
+      })).filter(e => e.date);
+      // Merge — keep local entries not yet on SharePoint
+      const spKeys = new Set(spEntries.map(e => `${e.empKey}_${e.date}`));
+      const localOnly = clockEntries.filter(e => !spKeys.has(`${e.empKey}_${e.date}`));
+      clockEntries = [...spEntries, ...localOnly];
+      if (!silent) spLog(`✓ ${clockEntries.length} attendance records loaded`);
+    }
+
+    // ── Pull Settings ──
+    const spSets = await getListItems(siteId, "TimeTrack_Settings");
+    if (spSets.length) {
+      const pulled = {};
+      spSets.forEach(i => { if (i.fields.SettingKey) pulled[i.fields.SettingKey] = i.fields.SettingValue; });
+      settings = { ...settings, ...pulled };
+    }
+
+    saveLocal();
+    renderAll();
+    const now = new Date().toLocaleTimeString("en-AU", { hour:"2-digit", minute:"2-digit" });
+    setSyncStatus("Synced " + now);
+    if (!silent) { spLog(`✓ Pull complete at ${now}`); toast("✓ Pulled from SharePoint!", "success"); }
+  } catch(e) {
+    if (!silent) { spLog("✗ Pull failed: " + e.message); toast("Pull failed: " + e.message, "error"); }
+    setSyncStatus("Sync failed");
+  }
+  spSyncing = false;
+}
+
+// ── Auto-sync on clock in/out ─────────────────────────────────
+async function spAutoSync() {
+  const token = await getSpToken();
+  if (token) spPushAll();
+}
+
+function spLog(msg) {
+  const el = document.getElementById("sp-sync-log");
+  if (el) {
+    const line = document.createElement("div");
+    line.textContent = new Date().toLocaleTimeString("en-AU", {hour:"2-digit",minute:"2-digit"}) + " — " + msg;
+    el.insertBefore(line, el.firstChild);
+    // Keep last 10 lines
+    while (el.children.length > 10) el.removeChild(el.lastChild);
+  }
+  console.log("[SP Sync]", msg);
+}
+
+function setSyncStatus(msg) {
+  const el = document.getElementById("sync-status");
+  if (el) el.textContent = msg;
+}
+
+// Init MSAL on load and check existing session
+async function initSpSync() {
+  try {
+    const msalInst = await initMsal();
+    const accounts = msalInst.getAllAccounts();
+    if (accounts.length > 0) {
+      updateSpAuthStatus(true, accounts[0].name);
+      // Auto-pull on load
+      await spPullAll(true);
+    } else {
+      updateSpAuthStatus(false);
+    }
+  } catch(e) {
+    console.warn("SP init error:", e);
+  }
+}
+
 // ── Boot ──────────────────────────────────────────────────────
-const POWER_AUTOMATE_URL = "https://default3c259ff8b3a9490ca23979b422db62.eb.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/1f48e40d38724395b4aa9ed093b3af68/triggers/manual/paths/invoke?api-version=1";
 
 async function runScheduledExport(s) {
   const dateVal = today();

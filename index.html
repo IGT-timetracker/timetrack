@@ -251,7 +251,7 @@ footer{text-align:center;padding:1.5rem;font-size:11px;color:var(--text3);border
     </div>
     <div id="emp-grid"></div>
     <div class="admin-link" onclick="showAdminLogin()">⚙ Admin access</div>
-    <div class="login-footer">IGT APAC Manufacturing Operations · <strong>DV17</strong></div>
+    <div class="login-footer">IGT APAC Manufacturing Operations · <strong>DV18</strong></div>
   </div>
 </div>
 
@@ -369,11 +369,29 @@ footer{text-align:center;padding:1.5rem;font-size:11px;color:var(--text3);border
               <div style="font-size:11px;color:var(--text2);margin-top:4px">Used to access Admin section and settings</div>
             </div>
             <div class="divider"></div>
-            <div class="card-section-header">SharePoint Sync (Optional)</div>
-            <div style="font-size:12px;color:var(--text2);margin-bottom:.75rem">Connect to SharePoint to back up attendance data to your Excel file. Requires a SharePoint App Token from IT.</div>
-            <div class="form-row"><label>SharePoint site name</label><input type="text" id="cfg-site" placeholder="APACManufacturingOperationsTeam"/></div>
-            <div class="form-row"><label>Excel file path</label><input type="text" id="cfg-path" placeholder="General/ATTENDANCE/Attendance.xlsx"/></div>
-            <div class="form-row"><label>SharePoint App Token</label><input type="password" id="cfg-token" placeholder="Paste token from IT"/></div>
+            <div class="card-section-header">🔗 SharePoint List Sync</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:.75rem">Sync attendance data to your SharePoint Lists in real time. All PCs share the same live data. Requires Microsoft sign-in.</div>
+            <div class="form-row">
+              <label>SharePoint site URL</label>
+              <input type="text" id="cfg-site" placeholder="https://igtplc.sharepoint.com/sites/APACManufacturingOperationsTeam"/>
+            </div>
+            <div class="form-row">
+              <label>Azure App Client ID</label>
+              <input type="text" id="cfg-clientid" placeholder="Paste Client ID from IT (optional — uses default if blank)"/>
+              <div style="font-size:11px;color:var(--text2);margin-top:3px">Leave blank to use the default public client. Provide your own for better reliability.</div>
+            </div>
+            <div id="sp-auth-status" style="font-size:13px;margin-bottom:.75rem"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-ms" onclick="spSignIn()">🔐 Sign in to SharePoint</button>
+              <button class="btn" onclick="spTestConnection()">🔗 Test connection</button>
+              <button class="btn" onclick="spSignOut()" id="sp-signout-btn" style="display:none">Sign out</button>
+            </div>
+            <div class="divider"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:.5rem">
+              <button class="btn" onclick="spPullAll()">⬇ Pull from SharePoint</button>
+              <button class="btn btn-primary" onclick="spPushAll()">⬆ Push to SharePoint</button>
+            </div>
+            <div id="sp-sync-log" style="font-size:12px;color:var(--text2)"></div>
             <div class="divider"></div>
             <div class="card-section-header">Report Settings</div>
             <div class="form-row"><label>Work areas (comma separated)</label><input type="text" id="cfg-areas" placeholder="Gaming Assembly, Fintech Assembly, Repair Centre, Warehouse, Operations Support"/></div>
@@ -615,6 +633,7 @@ footer{text-align:center;padding:1.5rem;font-size:11px;color:var(--text3);border
 <div class="toast" id="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
 <script>
 // Load face-api.js safely
 (function(){
