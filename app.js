@@ -15,6 +15,8 @@ function init() {
   updateOnlineStatus();
   window.addEventListener("online", updateOnlineStatus);
   window.addEventListener("offline", updateOnlineStatus);
+  // Start auto-save
+  startAutoSave();
   // Init SharePoint sync
   initSpSync();
 }
@@ -518,6 +520,13 @@ function loadSettingsForm() {
   document.getElementById("cfg-areas").value = settings.areas || "";
   document.getElementById("cfg-company").value = settings.company || "";
   document.getElementById("cfg-lunch").value = settings.defaultLunch || 30;
+  // Backup settings
+  const bpEl = document.getElementById("cfg-backup-prefix");
+  const aiEl = document.getElementById("cfg-autosave-interval");
+  if (bpEl) bpEl.value = settings.backupPrefix || "IGT_TimeTrack_Backup";
+  if (aiEl) aiEl.value = settings.autoSaveInterval || 60;
+  updateBackupFilenamePreview();
+  updateLastBackupTime();
   renderSchedulesList();
   renderLatestVersion();
 }
@@ -998,22 +1007,165 @@ function showScreen(id) {
   if (id === "screen-app") renderAll();
 }
 
+// ── Local File Backup ─────────────────────────────────────────
+let autoSaveTimer = null;
+
+function getBackupPrefix() {
+  return settings.backupPrefix || "IGT_TimeTrack_Backup";
+}
+
+function getBackupFilename() {
+  return `${getBackupPrefix()}_${today()}.json`;
+}
+
+function buildBackupData() {
+  return {
+    version: APP_VERSION,
+    exportedAt: new Date().toISOString(),
+    exportedBy: "IGT TimeTrack Auto-Backup",
+    employees,
+    clockEntries,
+    settings: { ...settings, adminPin: "****" }, // mask PIN for security
+    schedules: getSchedules(),
+  };
+}
+
+function downloadJson(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function manualBackup() {
+  const data = buildBackupData();
+  downloadJson(data, getBackupFilename());
+  const now = new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+  backupLog(`✓ Manual backup downloaded at ${now}`);
+  updateLastBackupTime();
+  toast("✓ Backup downloaded to Downloads folder", "success");
+}
+
+function autoBackup() {
+  const data = buildBackupData();
+  downloadJson(data, getBackupFilename());
+  const now = new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+  localStorage.setItem("tt_last_backup", new Date().toISOString());
+  backupLog(`✓ Auto-saved at ${now}`);
+  updateLastBackupTime();
+}
+
+function startAutoSave() {
+  if (autoSaveTimer) clearInterval(autoSaveTimer);
+  const mins = parseInt(settings.autoSaveInterval || 60);
+  if (!mins) {
+    backupLog("Auto-save disabled");
+    return;
+  }
+  autoSaveTimer = setInterval(() => autoBackup(), mins * 60 * 1000);
+  backupLog(`Auto-save set — every ${mins} minute${mins > 1 ? "s" : ""}`);
+}
+
+function restoreFromBackup(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = "";
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      // Validate it's a TimeTrack backup
+      if (!data.employees || !data.clockEntries) {
+        toast("Invalid backup file — not a TimeTrack backup", "error");
+        return;
+      }
+      // Confirm before overwriting
+      const msg = `Restore backup from ${data.exportedAt?.slice(0,10) || "unknown date"}?\n\nThis will replace:\n• ${data.employees.length} employees\n• ${data.clockEntries.length} attendance records\n\nCurrent data will be overwritten.`;
+      if (!confirm(msg)) return;
+
+      // Restore data
+      employees = data.employees || [];
+      clockEntries = data.clockEntries || [];
+      // Restore settings but keep current adminPin
+      const currentPin = settings.adminPin;
+      settings = { ...settings, ...data.settings, adminPin: currentPin };
+      // Restore schedules
+      if (data.schedules) localStorage.setItem("tt_schedules", JSON.stringify(data.schedules));
+      saveLocal();
+      renderAll();
+      loadSettingsForm();
+      const now = new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+      backupLog(`✓ Restored from backup at ${now} — ${employees.length} employees, ${clockEntries.length} records`);
+      toast(`✓ Restored ${employees.length} employees and ${clockEntries.length} records`, "success");
+    } catch(e) {
+      toast("Failed to read backup file: " + e.message, "error");
+      backupLog("✗ Restore failed: " + e.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function saveBackupSettings() {
+  settings.backupPrefix = document.getElementById("cfg-backup-prefix").value.trim() || "IGT_TimeTrack_Backup";
+  settings.autoSaveInterval = parseInt(document.getElementById("cfg-autosave-interval").value) || 0;
+  saveLocal();
+  startAutoSave();
+  updateBackupFilenamePreview();
+  toast("Backup settings saved", "success");
+  backupLog(`Settings saved — auto-save every ${settings.autoSaveInterval || 0} min`);
+}
+
+function updateBackupFilenamePreview() {
+  const prefix = document.getElementById("cfg-backup-prefix")?.value.trim() || "IGT_TimeTrack_Backup";
+  const el = document.getElementById("backup-filename-preview");
+  if (el) el.textContent = `${prefix}_${today()}.json`;
+}
+
+function updateLastBackupTime() {
+  const el = document.getElementById("last-backup-time");
+  const last = localStorage.getItem("tt_last_backup");
+  if (el) el.textContent = last ? new Date(last).toLocaleString("en-AU") : "Never";
+}
+
+function backupLog(msg) {
+  const el = document.getElementById("backup-log");
+  if (!el) return;
+  const line = document.createElement("div");
+  line.textContent = new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }) + " — " + msg;
+  el.insertBefore(line, el.firstChild);
+  while (el.children.length > 5) el.removeChild(el.lastChild);
+}
+
 // ── Version History ───────────────────────────────────────────
-const APP_VERSION = "DV18";
+const APP_VERSION = "DV19";
 const VERSION_HISTORY = [
   {
-    version: "DV18",
+    version: "DV19",
     date: "2026-06-26",
     status: "current",
     changes: [
+      "Local file backup — auto-saves JSON backup to Downloads folder",
+      "Configurable auto-save interval (30 min, 1 hr, 2 hr, 6 hr or disabled)",
+      "Configurable backup filename prefix",
+      "Manual backup download button",
+      "Restore from backup file — validates and confirms before overwriting",
+      "Last backup time shown in Admin settings",
+      "Backup log shows last 5 save operations",
+    ]
+  },
+  {
+    version: "DV18",
+    date: "2026-06-26",
+    changes: [
       "SharePoint List sync — real-time read/write to SharePoint Lists",
-      "All PCs now share live attendance data via SharePoint",
       "Sign in with Microsoft button in Admin → Settings",
       "Auto-sync to SharePoint on every clock in/out",
-      "Auto-pull from SharePoint on app load if signed in",
-      "Manual push/pull buttons in Admin settings",
-      "Connection test verifies all 3 lists are accessible",
-      "Sync log shows last 10 sync operations",
+      "Manual push/pull and connection test buttons",
     ]
   },
   {

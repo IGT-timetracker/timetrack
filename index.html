@@ -251,7 +251,7 @@ footer{text-align:center;padding:1.5rem;font-size:11px;color:var(--text3);border
     </div>
     <div id="emp-grid"></div>
     <div class="admin-link" onclick="showAdminLogin()">⚙ Admin access</div>
-    <div class="login-footer">IGT APAC Manufacturing Operations · <strong>DV18</strong></div>
+    <div class="login-footer">IGT APAC Manufacturing Operations · <strong>DV19</strong></div>
   </div>
 </div>
 
@@ -408,6 +408,38 @@ footer{text-align:center;padding:1.5rem;font-size:11px;color:var(--text3);border
               </select>
             </div>
             <button class="btn btn-primary" onclick="saveSettings()">✓ Save Settings</button>
+          </div>
+          <div class="card" style="margin-top:1rem">
+            <div class="card-section-header">💾 Local File Backup</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:.75rem">
+              Automatically saves all attendance data to a JSON backup file on this PC. Use this to restore data if browser storage is cleared, or to transfer data between PCs.
+            </div>
+            <div class="form-row">
+              <label>Auto-save interval</label>
+              <select id="cfg-autosave-interval">
+                <option value="0">Disabled</option>
+                <option value="30">Every 30 minutes</option>
+                <option value="60" selected>Every hour</option>
+                <option value="120">Every 2 hours</option>
+                <option value="360">Every 6 hours</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Backup filename prefix</label>
+              <input type="text" id="cfg-backup-prefix" placeholder="IGT_TimeTrack_Backup" oninput="updateBackupFilenamePreview()"/>
+              <div style="font-size:11px;color:var(--text2);margin-top:3px">File saves to your Downloads folder as: <span id="backup-filename-preview" style="font-weight:600">IGT_TimeTrack_Backup_2026-06-26.json</span></div>
+            </div>
+            <button class="btn btn-primary" onclick="saveBackupSettings()">✓ Save backup settings</button>
+            <div class="divider"></div>
+            <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:.5rem">Manual backup</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-success" onclick="manualBackup()">⬇ Download backup now</button>
+              <button class="btn" onclick="document.getElementById('restore-file').click()">⬆ Restore from backup</button>
+              <input type="file" id="restore-file" accept=".json" style="display:none" onchange="restoreFromBackup(event)"/>
+            </div>
+            <div id="backup-log" style="margin-top:.75rem;font-size:12px;color:var(--text2)"></div>
+            <div style="margin-top:.5rem;font-size:12px;color:var(--text2)">Last auto-save: <span id="last-backup-time">Never</span></div>
+          </div>
           </div>
           <div class="card" style="margin-top:1rem">
             <div class="card-section-header">📧 Scheduled Timesheet Reports</div>
