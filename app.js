@@ -992,7 +992,7 @@ let enrollStream = null;
 
 const FACE_MODELS_URL = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights";
 const FACE_MODELS_URL_FALLBACK = "https://unpkg.com/face-api.js@0.22.2/weights";
-const FACE_MATCH_THRESHOLD = 0.5;
+const FACE_MATCH_THRESHOLD = 0.6; // 0.6 is more forgiving, lower = stricter
 
 async function loadFaceApi() {
   if (faceApiLoaded) return true;
@@ -1042,11 +1042,26 @@ function buildFaceDescriptors() {
   employees.forEach(emp => {
     if (emp.faceDescriptor) {
       try {
-        const arr = new Float32Array(Object.values(emp.faceDescriptor));
-        faceDescriptors.push({ empKey: emp.key, descriptor: arr });
-      } catch(e) {}
+        // Handle both array and object formats from localStorage
+        const raw = emp.faceDescriptor;
+        let arr;
+        if (Array.isArray(raw)) {
+          arr = new Float32Array(raw);
+        } else if (typeof raw === "object") {
+          arr = new Float32Array(Object.values(raw));
+        } else {
+          return;
+        }
+        if (arr.length === 128) { // valid face descriptor is 128 floats
+          faceDescriptors.push({ empKey: emp.key, descriptor: arr });
+          console.log(`Face descriptor loaded for ${emp.name}: ${arr.length} values`);
+        }
+      } catch(e) {
+        console.error(`Failed to load face descriptor for ${emp.name}:`, e);
+      }
     }
   });
+  console.log(`Total face descriptors loaded: ${faceDescriptors.length}`);
 }
 
 async function startFaceId() {
@@ -1077,6 +1092,16 @@ async function startFaceId() {
     setFaceStatus("🔍 Looking for your face…", "scanning");
     faceDetecting = true;
     buildFaceDescriptors();
+
+    // Auto-stop after 30 seconds with helpful message
+    setTimeout(() => {
+      if (faceDetecting) {
+        faceDetecting = false;
+        setFaceStatus("⏱ Face not recognised after 30s — try re-enrolling in Admin or use PIN/search", "error");
+        stopFaceId();
+      }
+    }, 30000);
+
     detectFaceLoop(video);
   } catch(e) {
     setFaceStatus("Camera unavailable: " + e.message, "error");
@@ -1089,31 +1114,44 @@ async function detectFaceLoop(video) {
   if (!faceDetecting) return;
   try {
     const detection = await faceapi
-      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold:0.5 }))
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.3 }))
       .withFaceLandmarks(true)
       .withFaceDescriptor();
-    if (detection && faceDescriptors.length) {
-      let bestMatch = null, bestDist = Infinity;
-      faceDescriptors.forEach(fd => {
-        const dist = faceapi.euclideanDistance(detection.descriptor, fd.descriptor);
-        if (dist < bestDist) { bestDist = dist; bestMatch = fd; }
-      });
-      if (bestDist < FACE_MATCH_THRESHOLD && bestMatch) {
-        const emp = employees.find(e => e.key === bestMatch.empKey);
-        setFaceStatus(`✅ Recognised: ${emp?.name}`, "success");
-        faceDetecting = false;
-        playBeep();
-        stopFaceId();
-        setTimeout(() => selectEmployee(bestMatch.empKey), 600);
-        return;
+
+    if (detection) {
+      if (faceDescriptors.length) {
+        let bestMatch = null, bestDist = Infinity;
+        faceDescriptors.forEach(fd => {
+          const dist = faceapi.euclideanDistance(detection.descriptor, fd.descriptor);
+          if (dist < bestDist) { bestDist = dist; bestMatch = fd; }
+        });
+
+        // Show live distance so we can debug threshold
+        const pct = Math.round((1 - Math.min(bestDist, 1)) * 100);
+        const emp = employees.find(e => e.key === bestMatch?.empKey);
+        setFaceStatus(`🔍 Matching… ${pct}% — ${emp?.name || "unknown"}`, "scanning");
+
+        if (bestDist < FACE_MATCH_THRESHOLD && bestMatch) {
+          setFaceStatus(`✅ Recognised: ${emp?.name}`, "success");
+          faceDetecting = false;
+          playBeep();
+          setTimeout(() => {
+            stopFaceId();
+            selectEmployee(bestMatch.empKey);
+          }, 800);
+          return;
+        }
       } else {
-        setFaceStatus("🔍 Face detected — matching…", "scanning");
+        setFaceStatus("🔍 Face detected but no faces enrolled", "scanning");
       }
     } else {
-      setFaceStatus("🔍 Looking for your face…", "scanning");
+      setFaceStatus("🔍 No face detected — look straight at the camera", "scanning");
     }
-  } catch(e) {}
-  if (faceDetecting) setTimeout(() => detectFaceLoop(video), 300);
+  } catch(e) {
+    console.error("Face detection error:", e);
+    setFaceStatus("⚠ Detection error: " + e.message, "error");
+  }
+  if (faceDetecting) setTimeout(() => detectFaceLoop(video), 400);
 }
 
 function stopFaceId() {
