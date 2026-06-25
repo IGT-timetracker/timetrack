@@ -523,8 +523,10 @@ function loadSettingsForm() {
   // Backup settings
   const bpEl = document.getElementById("cfg-backup-prefix");
   const aiEl = document.getElementById("cfg-autosave-interval");
-  if (bpEl) bpEl.value = settings.backupPrefix || "IGT_TimeTrack_Backup";
+  if (bpEl) bpEl.value = settings.backupPrefix || "IGT_Attendance";
   if (aiEl) aiEl.value = settings.autoSaveInterval || 60;
+  const crEl = document.getElementById("cfg-csv-range");
+  if (crEl) crEl.value = settings.csvRange || "all";
   updateBackupFilenamePreview();
   updateLastBackupTime();
   renderSchedulesList();
@@ -1007,31 +1009,68 @@ function showScreen(id) {
   if (id === "screen-app") renderAll();
 }
 
-// ── Local File Backup ─────────────────────────────────────────
+// ── CSV & Backup Engine ───────────────────────────────────────
 let autoSaveTimer = null;
 
 function getBackupPrefix() {
-  return settings.backupPrefix || "IGT_TimeTrack_Backup";
+  return settings.backupPrefix || "IGT_Attendance";
 }
 
-function getBackupFilename() {
-  return `${getBackupPrefix()}_${today()}.json`;
+function getCSVFilename(range) {
+  const prefix = getBackupPrefix();
+  if (range === "today") return `${prefix}_${today()}.csv`;
+  if (range === "week") return `${prefix}_Week_${today()}.csv`;
+  if (range === "month") return `${prefix}_Month_${today().slice(0,7)}.csv`;
+  return `${prefix}_All_${today()}.csv`;
 }
 
-function buildBackupData() {
-  return {
-    version: APP_VERSION,
-    exportedAt: new Date().toISOString(),
-    exportedBy: "IGT TimeTrack Auto-Backup",
-    employees,
-    clockEntries,
-    settings: { ...settings, adminPin: "****" }, // mask PIN for security
-    schedules: getSchedules(),
-  };
+function filterByRange(entries, range) {
+  const d = new Date();
+  if (range === "today") return entries.filter(e => e.date === today());
+  if (range === "week") {
+    const startOfWeek = new Date(d);
+    startOfWeek.setDate(d.getDate() - d.getDay() + 1);
+    const weekStart = startOfWeek.toISOString().slice(0,10);
+    return entries.filter(e => e.date >= weekStart);
+  }
+  if (range === "month") {
+    const monthStart = today().slice(0,7);
+    return entries.filter(e => e.date.startsWith(monthStart));
+  }
+  return entries; // all
 }
 
-function downloadJson(data, filename) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+function buildCSV(entries) {
+  const headers = [
+    "Employee Name", "Employee ID", "Work Area", "Employment Status",
+    "Date", "Std Start", "Actual Clock In", "Start Variance",
+    "Std End", "Actual Clock Out", "End Variance",
+    "Std Hours", "Lunch Break (min)", "Net Hours", "Difference", "Status"
+  ];
+
+  const rows = entries.map(e => {
+    const actual = calcHours(e.timeIn, e.timeOut, e.lunchMins);
+    const diff = actual !== null ? +(actual - e.stdHours).toFixed(2) : "";
+    const inVar = timeDiffStr(e.stdStart, e.timeIn) || "";
+    const outVar = e.timeOut ? (timeDiffStr(e.stdEnd, e.timeOut) || "") : "";
+    const status = e.timeOut
+      ? (diff !== "" && diff >= 0 ? "On time" : "Short hours")
+      : e.timeIn ? "In progress" : "Absent";
+    return [
+      e.name, e.empId, e.area, e.status || "Permanent",
+      e.date, e.stdStart, e.timeIn || "", inVar,
+      e.stdEnd, e.timeOut || "", outVar,
+      e.stdHours, e.lunchMins || 0,
+      actual !== null ? +actual.toFixed(2) : "",
+      diff !== "" ? diff : "", status
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(",");
+  });
+
+  return [headers.map(h => `"${h}"`).join(","), ...rows].join("\r\n");
+}
+
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -1042,33 +1081,51 @@ function downloadJson(data, filename) {
   URL.revokeObjectURL(url);
 }
 
-function manualBackup() {
-  const data = buildBackupData();
-  downloadJson(data, getBackupFilename());
-  const now = new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
-  backupLog(`✓ Manual backup downloaded at ${now}`);
-  updateLastBackupTime();
-  toast("✓ Backup downloaded to Downloads folder", "success");
+function downloadCSV(rangeOverride) {
+  const range = rangeOverride || document.getElementById("cfg-csv-range")?.value || "all";
+  const entries = filterByRange(clockEntries, range);
+  if (!entries.length) { toast("No attendance records for selected range", "error"); return; }
+  const csv = buildCSV(entries);
+  const filename = getCSVFilename(range);
+  downloadFile(csv, filename, "text/csv;charset=utf-8;");
+  const now = new Date().toLocaleTimeString("en-AU", { hour:"2-digit", minute:"2-digit" });
+  backupLog(`✓ CSV downloaded — ${entries.length} records (${range}) at ${now}`);
+  toast(`✓ CSV saved — ${entries.length} records`, "success");
 }
 
 function autoBackup() {
-  const data = buildBackupData();
-  downloadJson(data, getBackupFilename());
-  const now = new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+  // Auto-save: download CSV for all records
+  const entries = clockEntries;
+  if (!entries.length) return;
+  const csv = buildCSV(entries);
+  const filename = getCSVFilename("all");
+  downloadFile(csv, filename, "text/csv;charset=utf-8;");
   localStorage.setItem("tt_last_backup", new Date().toISOString());
-  backupLog(`✓ Auto-saved at ${now}`);
+  const now = new Date().toLocaleTimeString("en-AU", { hour:"2-digit", minute:"2-digit" });
+  backupLog(`✓ Auto-saved CSV at ${now} — ${entries.length} records`);
   updateLastBackupTime();
+}
+
+function downloadFullBackup() {
+  const data = {
+    version: APP_VERSION,
+    exportedAt: new Date().toISOString(),
+    employees, clockEntries,
+    settings: { ...settings, adminPin: "****" },
+    schedules: getSchedules(),
+  };
+  const prefix = getBackupPrefix();
+  downloadFile(JSON.stringify(data, null, 2), `${prefix}_FullBackup_${today()}.json`, "application/json");
+  backupLog(`✓ Full JSON backup downloaded at ${new Date().toLocaleTimeString("en-AU",{hour:"2-digit",minute:"2-digit"})}`);
+  toast("✓ Full backup downloaded", "success");
 }
 
 function startAutoSave() {
   if (autoSaveTimer) clearInterval(autoSaveTimer);
   const mins = parseInt(settings.autoSaveInterval || 60);
-  if (!mins) {
-    backupLog("Auto-save disabled");
-    return;
-  }
+  if (!mins) { backupLog("Auto-save disabled"); return; }
   autoSaveTimer = setInterval(() => autoBackup(), mins * 60 * 1000);
-  backupLog(`Auto-save set — every ${mins} minute${mins > 1 ? "s" : ""}`);
+  backupLog(`Auto-save active — CSV every ${mins} min`);
 }
 
 function restoreFromBackup(event) {
@@ -1079,31 +1136,21 @@ function restoreFromBackup(event) {
   reader.onload = (e) => {
     try {
       const data = JSON.parse(e.target.result);
-      // Validate it's a TimeTrack backup
-      if (!data.employees || !data.clockEntries) {
-        toast("Invalid backup file — not a TimeTrack backup", "error");
-        return;
-      }
-      // Confirm before overwriting
-      const msg = `Restore backup from ${data.exportedAt?.slice(0,10) || "unknown date"}?\n\nThis will replace:\n• ${data.employees.length} employees\n• ${data.clockEntries.length} attendance records\n\nCurrent data will be overwritten.`;
+      if (!data.employees || !data.clockEntries) { toast("Invalid backup file", "error"); return; }
+      const msg = `Restore backup from ${data.exportedAt?.slice(0,10) || "unknown"}?\n\n• ${data.employees.length} employees\n• ${data.clockEntries.length} attendance records\n\nThis will overwrite current data.`;
       if (!confirm(msg)) return;
-
-      // Restore data
+      const currentPin = settings.adminPin;
       employees = data.employees || [];
       clockEntries = data.clockEntries || [];
-      // Restore settings but keep current adminPin
-      const currentPin = settings.adminPin;
       settings = { ...settings, ...data.settings, adminPin: currentPin };
-      // Restore schedules
       if (data.schedules) localStorage.setItem("tt_schedules", JSON.stringify(data.schedules));
       saveLocal();
       renderAll();
       loadSettingsForm();
-      const now = new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
-      backupLog(`✓ Restored from backup at ${now} — ${employees.length} employees, ${clockEntries.length} records`);
+      backupLog(`✓ Restored — ${employees.length} employees, ${clockEntries.length} records`);
       toast(`✓ Restored ${employees.length} employees and ${clockEntries.length} records`, "success");
     } catch(e) {
-      toast("Failed to read backup file: " + e.message, "error");
+      toast("Failed to read backup: " + e.message, "error");
       backupLog("✗ Restore failed: " + e.message);
     }
   };
@@ -1111,19 +1158,19 @@ function restoreFromBackup(event) {
 }
 
 function saveBackupSettings() {
-  settings.backupPrefix = document.getElementById("cfg-backup-prefix").value.trim() || "IGT_TimeTrack_Backup";
+  settings.backupPrefix = document.getElementById("cfg-backup-prefix").value.trim() || "IGT_Attendance";
   settings.autoSaveInterval = parseInt(document.getElementById("cfg-autosave-interval").value) || 0;
+  settings.csvRange = document.getElementById("cfg-csv-range").value || "all";
   saveLocal();
   startAutoSave();
   updateBackupFilenamePreview();
   toast("Backup settings saved", "success");
-  backupLog(`Settings saved — auto-save every ${settings.autoSaveInterval || 0} min`);
 }
 
 function updateBackupFilenamePreview() {
-  const prefix = document.getElementById("cfg-backup-prefix")?.value.trim() || "IGT_TimeTrack_Backup";
+  const prefix = document.getElementById("cfg-backup-prefix")?.value.trim() || "IGT_Attendance";
   const el = document.getElementById("backup-filename-preview");
-  if (el) el.textContent = `${prefix}_${today()}.json`;
+  if (el) el.textContent = `${prefix}_${today()}.csv`;
 }
 
 function updateLastBackupTime() {
@@ -1136,26 +1183,43 @@ function backupLog(msg) {
   const el = document.getElementById("backup-log");
   if (!el) return;
   const line = document.createElement("div");
-  line.textContent = new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }) + " — " + msg;
+  line.textContent = new Date().toLocaleTimeString("en-AU", { hour:"2-digit", minute:"2-digit" }) + " — " + msg;
   el.insertBefore(line, el.firstChild);
   while (el.children.length > 5) el.removeChild(el.lastChild);
 }
 
 // ── Version History ───────────────────────────────────────────
-const APP_VERSION = "DV19";
+const APP_VERSION = "DV21";
 const VERSION_HISTORY = [
   {
-    version: "DV19",
+    version: "DV21",
     date: "2026-06-26",
     status: "current",
     changes: [
+      "Moved to IGT's official GitHub organisation — IGTOpsAPAC",
+      "New app URL: https://IGTOpsAPAC.github.io/timetrack",
+      "App now owned by IGT organisation — stays with company",
+      "Strengthens Azure App Registration approval request to IT",
+      "Redirect URI updated to IGTOpsAPAC GitHub Pages domain",
+    ]
+  },
+  {
+    version: "DV20",
+    date: "2026-06-26",
+    changes: [
+      "CSV attendance backup — auto-saves to Downloads folder as CSV",
+      "Download options: Today only, This week, This month, All records",
+      "Configurable auto-save interval and filename prefix",
+      "Full JSON backup/restore for data migration between PCs",
+    ]
+  },
+  {
+    version: "DV19",
+    date: "2026-06-26",
+    changes: [
       "Local file backup — auto-saves JSON backup to Downloads folder",
-      "Configurable auto-save interval (30 min, 1 hr, 2 hr, 6 hr or disabled)",
-      "Configurable backup filename prefix",
-      "Manual backup download button",
-      "Restore from backup file — validates and confirms before overwriting",
-      "Last backup time shown in Admin settings",
-      "Backup log shows last 5 save operations",
+      "Configurable auto-save interval and filename prefix",
+      "Manual backup download and restore from backup file",
     ]
   },
   {
@@ -1650,7 +1714,8 @@ function clearFaceEnroll() {
 
 // ── SharePoint List Sync Engine ───────────────────────────────
 const SP_SCOPES = ["Sites.ReadWrite.All", "Files.ReadWrite", "User.Read"];
-const SP_DEFAULT_CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"; // MS Office public client
+const SP_DEFAULT_CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c";
+const APP_GITHUB_URL = "https://igtopsapac.github.io/timetrack";
 let spMsal = null;
 let spToken = null;
 let spSiteId = null;

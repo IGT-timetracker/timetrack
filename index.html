@@ -251,7 +251,7 @@ footer{text-align:center;padding:1.5rem;font-size:11px;color:var(--text3);border
     </div>
     <div id="emp-grid"></div>
     <div class="admin-link" onclick="showAdminLogin()">⚙ Admin access</div>
-    <div class="login-footer">IGT APAC Manufacturing Operations · <strong>DV19</strong></div>
+    <div class="login-footer">IGT APAC Manufacturing Operations · <strong>DV21</strong></div>
   </div>
 </div>
 
@@ -410,9 +410,9 @@ footer{text-align:center;padding:1.5rem;font-size:11px;color:var(--text3);border
             <button class="btn btn-primary" onclick="saveSettings()">✓ Save Settings</button>
           </div>
           <div class="card" style="margin-top:1rem">
-            <div class="card-section-header">💾 Local File Backup</div>
+            <div class="card-section-header">💾 CSV Attendance Backup</div>
             <div style="font-size:12px;color:var(--text2);margin-bottom:.75rem">
-              Automatically saves all attendance data to a JSON backup file on this PC. Use this to restore data if browser storage is cleared, or to transfer data between PCs.
+              Automatically saves attendance data as a CSV file to your Downloads folder. Open directly in Excel. Also saves a full JSON backup for restoring data.
             </div>
             <div class="form-row">
               <label>Auto-save interval</label>
@@ -425,16 +425,27 @@ footer{text-align:center;padding:1.5rem;font-size:11px;color:var(--text3);border
               </select>
             </div>
             <div class="form-row">
-              <label>Backup filename prefix</label>
-              <input type="text" id="cfg-backup-prefix" placeholder="IGT_TimeTrack_Backup" oninput="updateBackupFilenamePreview()"/>
-              <div style="font-size:11px;color:var(--text2);margin-top:3px">File saves to your Downloads folder as: <span id="backup-filename-preview" style="font-weight:600">IGT_TimeTrack_Backup_2026-06-26.json</span></div>
+              <label>Filename prefix</label>
+              <input type="text" id="cfg-backup-prefix" placeholder="IGT_Attendance" oninput="updateBackupFilenamePreview()"/>
+              <div style="font-size:11px;color:var(--text2);margin-top:3px">Saves as: <span id="backup-filename-preview" style="font-weight:600">IGT_Attendance_2026-06-26.csv</span></div>
             </div>
-            <button class="btn btn-primary" onclick="saveBackupSettings()">✓ Save backup settings</button>
+            <div class="form-row">
+              <label>CSV date range</label>
+              <select id="cfg-csv-range">
+                <option value="today">Today only</option>
+                <option value="week">This week</option>
+                <option value="month">This month</option>
+                <option value="all" selected>All records</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" onclick="saveBackupSettings()">✓ Save settings</button>
             <div class="divider"></div>
-            <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:.5rem">Manual backup</div>
+            <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:.5rem">Download now</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn-success" onclick="manualBackup()">⬇ Download backup now</button>
-              <button class="btn" onclick="document.getElementById('restore-file').click()">⬆ Restore from backup</button>
+              <button class="btn btn-success" onclick="downloadCSV()">⬇ Download CSV</button>
+              <button class="btn btn-success" onclick="downloadCSV('today')">⬇ Today's CSV</button>
+              <button class="btn" onclick="downloadFullBackup()">⬇ Full backup (JSON)</button>
+              <button class="btn" onclick="document.getElementById('restore-file').click()">⬆ Restore from JSON</button>
               <input type="file" id="restore-file" accept=".json" style="display:none" onchange="restoreFromBackup(event)"/>
             </div>
             <div id="backup-log" style="margin-top:.75rem;font-size:12px;color:var(--text2)"></div>
